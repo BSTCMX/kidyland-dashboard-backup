@@ -1,0 +1,74 @@
+{
+  "name": "kidyland",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kidyland monorepo",
+  "scripts": {
+    "dev:api": "cd packages/api && uvicorn main:app --reload",
+    "dev:reception": "pnpm --filter @kidyland/reception dev",
+    "dev:monitor": "pnpm --filter @kidyland/monitor dev",
+    "dev:kidibar": "pnpm --filter @kidyland/kidibar dev",
+    "dev:web": "pnpm --filter './apps/*' dev",
+    "dev": "concurrently \"pnpm dev:api\" \"pnpm dev:web\"",
+    "install:all": "pnpm install",
+    "build": "pnpm --filter './apps/*' build",
+    "test": "pnpm --filter './packages/*' test",
+    "test:api": "cd packages/api && pytest",
+    "test:api:unit": "cd packages/api && pytest tests/unit/ -m unit",
+    "test:api:integration": "cd packages/api && pytest tests/integration/ -m integration",
+    "test:api:coverage": "cd packages/api && pytest --cov=. --cov-report=html --cov-report=term-missing",
+    "test:api:watch": "cd packages/api && pytest-watch",
+    "test:api:parallel": "cd packages/api && pytest -n auto",
+    "test:frontend": "pnpm --filter './packages/utils' test && pnpm --filter './packages/ui' test",
+    "test:web": "pnpm --filter './apps/web' test",
+    "test:web:ui": "pnpm --filter './apps/web' test:ui",
+    "test:web:coverage": "pnpm --filter './apps/web' test:coverage",
+    "test:web:e2e": "pnpm --filter './apps/web' test:e2e",
+    "test:all": "pnpm test:api && pnpm test:frontend && pnpm test:web",
+    "lint": "pnpm -r lint",
+    "lint:fix": "pnpm -r lint:fix",
+    "format": "pnpm -r format",
+    "typecheck": "pnpm -r typecheck",
+    "validate": "pnpm lint && pnpm typecheck",
+    "lint:api": "cd packages/api && ruff check . && ruff format --check .",
+    "format:api": "cd packages/api && ruff format . && black .",
+    "typecheck:api": "cd packages/api && mypy .",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "@sveltejs/adapter-static": "2.0.3",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-svelte": "^2.40.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.3.0",
+    "prettier-plugin-svelte": "^3.2.0",
+    "svelte-check": "^3.6.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18.20.0",
+    "pnpm": ">=8.15.0"
+  },
+  "packageManager": "pnpm@8.15.0",
+  "lint-staged": {
+    "*.{js,ts,svelte}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ],
+    "packages/api/**/*.py": [
+      "ruff check --fix",
+      "black"
+    ]
+  }
+}

@@ -1,0 +1,431 @@
+/**
+ * Global styles for Kidyland Admin App.
+ * 
+ * Includes:
+ * - CSS Variables for theming (dark/light mode)
+ * - Typography system
+ * - Button system
+ * - Base styles
+ */
+
+/* ============================================
+   CSS Variables - Theme System
+   ============================================ */
+
+:root {
+  /* Background Colors */
+  --theme-bg-primary: #ffffff;
+  --theme-bg-secondary: #f8fafc;
+  --theme-bg-elevated: #ffffff;
+  --theme-bg-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Accent Colors */
+  --accent-primary: #0093f7;
+  --accent-primary-hover: #0077cc;
+  --accent-success: #3dad09;
+  --accent-success-hover: #2d8a07;
+  --accent-warning: #ffce00;
+  --accent-warning-hover: #e6b800;
+  --accent-danger: #d30554;
+  --accent-danger-hover: #b00445;
+
+  /* Text Colors */
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-inverse: #ffffff;
+
+  /* Border Colors */
+  --border-primary: #e2e8f0;
+  --border-secondary: #cbd5e1;
+
+  /* Typography */
+  --font-primary: "Beam Visionary", system-ui, sans-serif;
+  --font-secondary: "MLB Blue Jays Modern", -apple-system, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Font Sizes */
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 32px;
+  --text-4xl: 40px;
+
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+
+  /* Border Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark Mode */
+[data-theme="dark"] {
+  /* Background Colors */
+  --theme-bg-primary: #061338;
+  --theme-bg-secondary: #0f1629;
+  --theme-bg-elevated: #1a2035;
+  --theme-bg-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Text Colors */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-inverse: #1e293b;
+
+  /* Border Colors */
+  --border-primary: #334155;
+  --border-secondary: #475569;
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background-color: var(--theme-bg-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--theme-bg-primary);
+  color: var(--text-primary);
+}
+
+/* ============================================
+   Typography
+   ============================================ */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-primary);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+h1 {
+  font-size: var(--text-4xl);
+}
+
+h2 {
+  font-size: var(--text-3xl);
+}
+
+h3 {
+  font-size: var(--text-2xl);
+}
+
+h4 {
+  font-size: var(--text-xl);
+}
+
+h5 {
+  font-size: var(--text-lg);
+}
+
+h6 {
+  font-size: var(--text-base);
+}
+
+p {
+  margin-bottom: var(--spacing-md);
+  color: var(--text-secondary);
+}
+
+a {
+  color: var(--accent-primary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--accent-primary-hover);
+}
+
+/* ============================================
+   Button System
+   ============================================ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  min-height: 48px;
+  min-width: 120px;
+  padding: 14px 28px;
+  font-family: var(--font-secondary);
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.5;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-success {
+  background: var(--accent-success);
+  color: var(--text-inverse);
+}
+
+.btn-success:hover:not(:disabled) {
+  background: var(--accent-success-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-warning {
+  background: var(--accent-warning);
+  color: var(--theme-bg-primary);
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: var(--accent-warning-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-danger {
+  background: var(--accent-danger);
+  color: var(--text-inverse);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--accent-danger-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-secondary {
+  background: var(--theme-bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--theme-bg-secondary);
+  border-color: var(--border-secondary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Icon Buttons */
+.btn-icon {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+}
+
+/* ============================================
+   Icon System
+   ============================================ */
+
+.icon {
+  width: 20px;
+  height: 20px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.icon-kidyland {
+  color: var(--accent-primary);
+  transition: color 0.2s ease;
+}
+
+.icon-kidyland:hover {
+  color: var(--accent-success);
+}
+
+.icon-kidyland:active {
+  color: var(--accent-danger);
+}
+
+/* ============================================
+   Responsive - Mobile First Approach
+   ============================================ */
+
+/* Mobile Small (360px+) */
+@media (min-width: 360px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-sm);
+  }
+
+  .kpi-card {
+    min-height: 120px;
+    padding: var(--spacing-md);
+  }
+
+  .btn {
+    min-width: 100px;
+    min-height: 48px;
+    padding: 12px 20px;
+    font-size: var(--text-sm);
+  }
+}
+
+/* Mobile Large (481px+) */
+@media (min-width: 481px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-md);
+  }
+
+  .kpi-card {
+    min-height: 140px;
+    padding: var(--spacing-lg);
+  }
+
+  .btn {
+    min-width: 120px;
+    padding: 14px 24px;
+    font-size: var(--text-base);
+  }
+}
+
+/* Tablet (768px+) */
+@media (min-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-lg);
+  }
+
+  .kpi-card {
+    min-height: 160px;
+    padding: var(--spacing-xl);
+  }
+
+  .btn {
+    min-width: 140px;
+    padding: 14px 28px;
+    font-size: var(--text-base);
+  }
+}
+
+/* Desktop (1024px+) */
+@media (min-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--spacing-xl);
+  }
+
+  .kpi-card {
+    min-height: 180px;
+  }
+}
+
+/* Desktop Large (1280px+) */
+@media (min-width: 1280px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--spacing-2xl);
+  }
+}
+
+/* Desktop XL (1440px+) */
+@media (min-width: 1440px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .dashboard-container {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+}
+
+/* Desktop 4K (1920px+) */
+@media (min-width: 1920px) {
+  .dashboard-container {
+    max-width: 1800px;
+  }
+}
+
+/* Touch-friendly adjustments for mobile */
+@media (max-width: 768px) {
+  /* Ensure all interactive elements are touch-friendly */
+  button,
+  .btn,
+  a,
+  input,
+  select,
+  textarea {
+    min-height: 48px;
+    min-width: 48px;
+  }
+
+  /* Increase tap targets */
+  .nav-link {
+    min-height: 48px;
+    padding: var(--spacing-md) var(--spacing-lg);
+  }
+
+  /* Better spacing for mobile */
+  .filters-section {
+    flex-direction: column;
+  }
+
+  .filter-group {
+    width: 100%;
+  }
+}
+
+

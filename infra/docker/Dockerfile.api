@@ -1,0 +1,144 @@
+# Multi-stage Dockerfile for Kidyland API
+# Builds frontend (SvelteKit) and backend (FastAPI) in a single image
+# Optimized for minimal image size: Target ~170-200 MB
+
+# ============================================================================
+# Stage 1: Frontend Builder
+# ============================================================================
+FROM node:18-alpine AS frontend-builder
+
+# Install Python and build dependencies for canvas (if needed)
+# Combine all apk operations in single RUN to reduce layers
+RUN apk add --no-cache \
+    python3 \
+    python3-dev \
+    py3-pip \
+    make \
+    g++ \
+    cairo-dev \
+    jpeg-dev \
+    pango-dev \
+    giflib-dev \
+    && rm -rf /var/cache/apk/*
+
+# Enable corepack for pnpm
+RUN corepack enable && corepack prepare pnpm@8.15.0 --activate
+
+# Set working directory
+WORKDIR /build
+
+# Ignore husky scripts during install (prevents errors in Docker)
+ENV npm_config_ignore_scripts=true
+
+# Set NODE_ENV to development to install devDependencies (needed for build)
+ENV NODE_ENV=development
+
+# Copy workspace configuration files (minimal copy for dependency resolution)
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml tsconfig.json ./
+
+# Copy package.json files first for better layer caching
+COPY packages/utils/package.json ./packages/utils/
+COPY apps/web/package.json ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/ui/package.json ./packages/ui/
+
+# Copy source files needed for build
+COPY packages/utils/ ./packages/utils/
+COPY apps/web/ ./apps/web/
+COPY packages/shared/ ./packages/shared/
+COPY packages/ui/ ./packages/ui/
+
+# Install all dependencies (including devDependencies for build)
+RUN pnpm install --frozen-lockfile
+
+# Build frontend (SvelteKit with adapter-static)
+WORKDIR /build/apps/web
+RUN pnpm build
+
+# Aggressive cleanup: Remove all unnecessary files after build
+# This significantly reduces the size of artifacts copied to final stage
+RUN rm -rf \
+    node_modules \
+    packages/*/node_modules \
+    packages/*/dist \
+    packages/*/.svelte-kit \
+    .svelte-kit \
+    && find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" -o -name "*.svelte" \) ! -path "./build/*" -delete 2>/dev/null || true \
+    && find . -name "*.map" -delete 2>/dev/null || true \
+    && find . -name "*.test.*" -delete 2>/dev/null || true \
+    && find . -name "*.spec.*" -delete 2>/dev/null || true \
+    && rm -rf src node_modules .vite .svelte-kit 2>/dev/null || true
+
+# ============================================================================
+# Stage 2: Python Dependencies Builder
+# ============================================================================
+FROM python:3.12-alpine3.20 AS python-builder
+
+# Install build dependencies in single RUN
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    python3-dev \
+    libffi-dev \
+    openssl-dev \
+    postgresql-dev \
+    rust \
+    cargo \
+    && rm -rf /var/cache/apk/*
+
+# Set working directory
+WORKDIR /build
+
+# Copy Python requirements
+COPY packages/api/requirements.txt ./
+
+# Install Python dependencies (no cache to reduce size)
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# ============================================================================
+# Stage 3: Runtime (Final Image)
+# ============================================================================
+FROM python:3.12-alpine3.20 AS runtime
+
+# Install only runtime dependencies (no build tools)
+# postgresql-libs needed for asyncpg at runtime
+RUN apk add --no-cache \
+    postgresql-libs \
+    && rm -rf /var/cache/apk/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy Python dependencies from builder stage to user-accessible location
+COPY --from=python-builder /root/.local /home/appuser/.local
+
+# Set PYTHONPATH so Python can find the packages.api module
+ENV PYTHONPATH=/app/packages/api
+ENV PATH=/home/appuser/.local/bin:$PATH
+
+# Copy only necessary API code (excludes venv, tests, migrations via .dockerignore)
+COPY packages/api/ ./packages/api/
+
+# Copy built frontend from frontend-builder stage (only build output)
+COPY --from=frontend-builder /build/apps/web/build ./static
+
+# Create non-root user for security
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser && \
+    chown -R appuser:appuser /app && \
+    chown -R appuser:appuser /home/appuser/.local
+
+# Switch to non-root user
+USER appuser
+
+# Expose port (Fly.io will inject PORT env variable)
+EXPOSE 8000
+
+# Health check (Fly.io also has health checks configured in fly.toml)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+# Run FastAPI with uvicorn
+# Note: FastAPI serves static files from ./static directory
+# Use python -m uvicorn to ensure it works regardless of PATH
+CMD ["sh", "-c", "python -m uvicorn packages.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

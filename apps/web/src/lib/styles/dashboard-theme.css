@@ -1,0 +1,172 @@
+/**
+ * Dashboard Theme - Consistent dark theme across all dashboards.
+ * 
+ * Inspired by Login + Databoard aesthetic.
+ * CSS-only (no WebGL/Three.js for performance).
+ */
+
+/* ============================================
+   CARD STYLING - Consistent with Login
+   ============================================ */
+
+.dashboard-card,
+.metric-card,
+.stats-card,
+.data-card {
+  background: var(--theme-bg-card);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.15),
+    0 0 20px var(--glow-primary),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-card:hover,
+.metric-card:hover,
+.stats-card:hover,
+.data-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(0, 147, 247, 0.5);
+  box-shadow: 
+    0 12px 32px rgba(0, 0, 0, 0.2),
+    0 0 30px var(--glow-primary),
+    0 0 40px var(--glow-secondary),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   INPUT STYLING - Large and readable
+   ============================================ */
+
+.dashboard-input,
+input[type="text"].styled,
+input[type="number"].styled,
+input[type="email"].styled,
+input[type="password"].styled,
+select.styled,
+textarea.styled {
+  padding: 0.875rem 1rem;
+  font-size: 1rem;
+  background: var(--theme-bg-secondary);
+  border: 2px solid var(--border-primary);
+  border-radius: 10px;
+  color: var(--text-primary);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dashboard-input:hover,
+input.styled:hover,
+select.styled:hover,
+textarea.styled:hover {
+  border-color: rgba(0, 147, 247, 0.5);
+}
+
+.dashboard-input:focus,
+input.styled:focus,
+select.styled:focus,
+textarea.styled:focus {
+  outline: none;
+  border-color: #0093f7;
+  background: rgba(15, 23, 42, 0.8);
+  box-shadow: 
+    0 0 0 3px rgba(0, 147, 247, 0.1),
+    0 0 20px var(--glow-primary);
+}
+
+/* ============================================
+   BUTTON STYLING - Consistent with Login
+   ============================================ */
+
+.dashboard-button-primary {
+  padding: 0.875rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #0093f7 0%, #3dad09 100%);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 
+    0 4px 12px var(--glow-primary),
+    0 0 20px var(--glow-secondary);
+}
+
+.dashboard-button-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 
+    0 6px 16px var(--glow-primary),
+    0 0 30px var(--glow-secondary),
+    0 0 40px var(--glow-primary);
+}
+
+/* ============================================
+   LOGO WITH GLOW - Databoard style
+   ============================================ */
+
+.logo-with-glow {
+  filter: drop-shadow(0 0 20px rgba(0, 147, 247, 0.6));
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.95;
+}
+
+.logo-with-glow:hover {
+  filter: 
+    drop-shadow(0 0 30px rgba(0, 147, 247, 0.8))
+    drop-shadow(0 0 40px rgba(211, 5, 84, 0.4));
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+/* ============================================
+   RESPONSIVE - Consistent breakpoints
+   ============================================ */
+
+@media (max-width: 640px) {
+  .dashboard-card,
+  .metric-card {
+    padding: var(--spacing-md);
+  }
+  
+  .dashboard-input,
+  input.styled {
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+  }
+  
+  .dashboard-button-primary {
+    padding: 0.75rem 1.25rem;
+    font-size: 1rem;
+  }
+}
+
+@media (min-width: 1008px) {
+  .dashboard-card,
+  .metric-card {
+    padding: var(--spacing-xl);
+  }
+}
+
+/* ============================================
+   DARK MODE DEFAULTS
+   ============================================ */
+
+:global([data-theme="dark"]) .dashboard-card,
+:global([data-theme="dark"]) .metric-card {
+  background: var(--theme-bg-card);
+}
+
+:global([data-theme="dark"]) input,
+:global([data-theme="dark"]) select,
+:global([data-theme="dark"]) textarea {
+  background: var(--theme-bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-primary);
+}
+
+
+

@@ -1,0 +1,25 @@
+{
+  "name": "Kidyland - Sistema de Gestión",
+  "short_name": "Kidyland",
+  "description": "Sistema de gestión para Kidyland - El Poder de la Diversión",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0093F7",
+  "theme_color": "#0093F7",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "es-MX",
+  "dir": "ltr"
+}
+
+
+

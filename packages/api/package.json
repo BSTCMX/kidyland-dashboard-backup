@@ -1,0 +1,44 @@
+{
+  "name": "@kidyland/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FastAPI backend for Kidyland",
+  "scripts": {
+    "lint": "ruff check .",
+    "lint:fix": "ruff check --fix .",
+    "format": "ruff format . && black .",
+    "typecheck": "mypy ."
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

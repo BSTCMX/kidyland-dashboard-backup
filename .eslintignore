@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.svelte-kit/
+.output/
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Generated
+*.generated.*
+
+# Config files
+*.config.js
+*.config.cjs
+*.config.mjs
+
+# Python
+__pycache__/
+*.py
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

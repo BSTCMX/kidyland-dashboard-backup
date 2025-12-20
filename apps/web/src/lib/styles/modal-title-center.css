@@ -1,0 +1,38 @@
+/**
+ * Global styles to center modal titles.
+ * Applied via :global() in component styles.
+ */
+:global(.modal-title-centered) {
+  text-align: center;
+  width: 100%;
+  padding: var(--spacing-lg) var(--spacing-xl);
+}
+
+:global(.modal-title-centered h3) {
+  margin: 0 auto;
+  text-align: center;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

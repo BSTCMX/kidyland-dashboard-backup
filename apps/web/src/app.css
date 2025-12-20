@@ -1,0 +1,196 @@
+/**
+ * Global styles for Kidyland Web App.
+ * 
+ * Consolidated styles for all modules (admin, recepcion, kidibar, monitor).
+ * Includes CSS variables, typography, and base styles.
+ */
+
+/* Base styles are defined in +layout.svelte CSS variables */
+
+/* Typography */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-primary);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+h1 {
+  font-size: var(--text-4xl);
+}
+
+h2 {
+  font-size: var(--text-3xl);
+}
+
+h3 {
+  font-size: var(--text-2xl);
+}
+
+h4 {
+  font-size: var(--text-xl);
+}
+
+h5 {
+  font-size: var(--text-lg);
+}
+
+h6 {
+  font-size: var(--text-base);
+}
+
+p {
+  margin-bottom: var(--spacing-md);
+  color: var(--text-secondary);
+}
+
+a {
+  color: var(--accent-primary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--accent-primary-hover);
+}
+
+/* Button System */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  min-height: var(--touch-target-min);
+  min-width: 120px;
+  padding: 14px 28px;
+  font-family: var(--font-secondary);
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.5;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-secondary {
+  background: var(--theme-bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--theme-bg-secondary);
+  border-color: var(--border-secondary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============================================
+   BRUTALIST BUTTON STYLE - Hybrid with Kidyland branding
+   ============================================ */
+
+.btn-brutalist {
+  border: 2px solid var(--accent-primary);
+  box-shadow: 3px 3px 0px 0px var(--accent-primary);
+  background-color: var(--theme-bg-elevated);
+  color: var(--accent-primary);
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: var(--radius-md);
+}
+
+.btn-brutalist:hover:not(:disabled) {
+  box-shadow: none;
+  border-width: 3px;
+  transform: translate(3px, 3px);
+  background-color: var(--accent-primary);
+  color: var(--text-inverse);
+}
+
+.btn-brutalist:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  transition-duration: 0.1s;
+}
+
+.btn-brutalist:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: 1px 1px 0px 0px var(--accent-primary);
+}
+
+.btn-brutalist-danger {
+  border: 2px solid var(--accent-danger);
+  box-shadow: 3px 3px 0px 0px var(--accent-danger);
+  background-color: var(--theme-bg-elevated);
+  color: var(--accent-danger);
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: var(--radius-md);
+}
+
+.btn-brutalist-danger:hover:not(:disabled) {
+  box-shadow: none;
+  border-width: 3px;
+  transform: translate(3px, 3px);
+  background-color: var(--accent-danger);
+  color: var(--text-inverse);
+}
+
+.btn-brutalist-danger:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  transition-duration: 0.1s;
+}
+
+.btn-brutalist-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: 1px 1px 0px 0px var(--accent-danger);
+}
+
+/* Responsive - Mobile First */
+@media (max-width: 768px) {
+  .btn {
+    min-width: 100px;
+    padding: 12px 20px;
+    font-size: var(--text-sm);
+  }
+}
+
+@media (max-width: 480px) {
+  .btn {
+    min-width: 80px;
+    padding: 10px 16px;
+    font-size: var(--text-xs);
+  }
+}
+
+
+
+
+
+

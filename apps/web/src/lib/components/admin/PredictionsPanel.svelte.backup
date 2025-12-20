@@ -1,0 +1,954 @@
+<script lang="ts">
+  /**
+   * PredictionsPanel component - Panel for generating and displaying predictions.
+   * 
+   * Features:
+   * - Button to generate predictions on demand
+   * - Display of sales, capacity, and stock predictions
+   * - Visual feedback and error handling
+   * - Only loads when user explicitly requests it
+   */
+  import { post } from "@kidyland/utils";
+  import {
+    metricsStore,
+    updatePredictions,
+    setPredictionInProgress,
+    setPredictionError,
+    type SalesPrediction,
+    type CapacityPrediction,
+    type StockPrediction,
+    type SalesByTypePrediction,
+    type PeakHoursPrediction,
+    type BusiestDaysPrediction,
+  } from "$lib/stores/metrics";
+  import { Sparkles } from "lucide-svelte";
+
+  // Component state
+  // Initialize forecastDays from store or default to 7
+  let forecastDays = $metricsStore.predictions.forecastDays || 7;
+  let predictionType = "all";
+  let lastPredictionTime = 0;
+  let predictionCount = 0;
+  let activeTypeTab: "products" | "services" | "packages" = "products";
+  
+  // Reactive disabled state for class directive
+  $: disabled = $metricsStore.predictions.predictionInProgress;
+
+  // Sync lastPredictionTime from store (read-only)
+  $: {
+    if ($metricsStore.predictions.generatedAt) {
+      lastPredictionTime = $metricsStore.predictions.generatedAt;
+    }
+  }
+
+  // Handle forecastDays changes - update store when user changes value
+  function handleForecastDaysChange(newValue: number) {
+    if (newValue >= 1 && newValue <= 90) {
+      forecastDays = newValue;
+      // Update store to persist the value
+      $metricsStore.predictions.forecastDays = newValue;
+    }
+  }
+
+  /**
+   * Handle generate predictions button click.
+   */
+  async function handleGeneratePredictions() {
+    const currentState = $metricsStore.predictions;
+    const currentTime = Date.now();
+
+    // Validation 1: Check if prediction is already in progress
+    if (currentState.predictionInProgress) {
+      return;
+    }
+
+    // Validation 2: Check minimum time between predictions (5 seconds)
+    if (currentState.generatedAt) {
+      const timeSinceLast = currentTime - currentState.generatedAt;
+      if (timeSinceLast < 5000) {
+        const remaining = ((5000 - timeSinceLast) / 1000).toFixed(1);
+        setPredictionError(`Espera ${remaining}s antes de generar predicciones nuevamente`);
+        return;
+      }
+    }
+
+    // Validation 3: Check maximum prediction count (10 per session)
+    // Note: This is tracked in backend, but we can show a warning
+    if (predictionCount >= 10) {
+      setPredictionError("Límite de predicciones alcanzado (10). Por favor espera.");
+      return;
+    }
+
+    // Set prediction in progress
+    setPredictionInProgress(true);
+    setPredictionError(null);
+
+    try {
+      // Call predictions endpoint
+      const response = await post<{
+        success: boolean;
+        message: string;
+        predictions: {
+          sales?: SalesPrediction;
+          capacity?: CapacityPrediction;
+          stock?: StockPrediction;
+          sales_by_type?: SalesByTypePrediction;
+          peak_hours?: PeakHoursPrediction;
+          busiest_days?: BusiestDaysPrediction;
+        };
+        elapsed_seconds: number;
+        confidence: string;
+        forecast_days: number;
+      }>("/reports/predictions/generate", {
+        forecast_days: forecastDays,
+        prediction_type: predictionType,
+      });
+
+      if (response.success && response.predictions) {
+        // Update store with predictions
+        updatePredictions(response.predictions, response.forecast_days);
+        predictionCount++;
+      } else {
+        throw new Error(response.message || "Error al generar predicciones");
+      }
+    } catch (error: any) {
+      console.error("Error generating predictions:", error);
+
+      // Handle specific error cases
+      if (error.message?.includes("429") || error.message?.includes("wait")) {
+        setPredictionError("Demasiadas solicitudes. Por favor espera unos segundos.");
+      } else if (error.message?.includes("401") || error.message?.includes("Unauthorized")) {
+        setPredictionError("Sesión expirada. Por favor inicia sesión nuevamente.");
+      } else if (error.message?.includes("Failed to fetch") || error.message?.includes("CORS")) {
+        setPredictionError("Error de conexión. Verifica que el servidor esté funcionando.");
+      } else if (error.message?.includes("500") || error.message?.includes("Internal Server Error")) {
+        setPredictionError("Error en el servidor. Por favor intenta nuevamente.");
+      } else {
+        setPredictionError(error.message || "Error al generar predicciones. Por favor intenta nuevamente.");
+      }
+    } finally {
+      // Reset is handled by updatePredictions or setPredictionError
+      setTimeout(() => {
+        setPredictionInProgress(false);
+      }, 100);
+    }
+  }
+</script>
+
+  <div class="predictions-panel">
+    <div class="panel-header">
+      <h2 class="panel-title">
+        <Sparkles size={28} strokeWidth={1.5} style="display: inline-block; vertical-align: middle; margin-right: 12px;" />
+        Predicciones y Análisis
+      </h2>
+    
+    <div class="controls">
+      <div class="control-group">
+        <label for="forecast-days">Días a predecir:</label>
+        <input
+          id="forecast-days"
+          type="number"
+          min="1"
+          max="90"
+          step="1"
+          value={forecastDays}
+          on:input={(e) => {
+            const target = e.currentTarget;
+            const val = parseInt(target.value, 10);
+            if (!isNaN(val)) {
+              handleForecastDaysChange(val);
+            }
+          }}
+          on:change={(e) => {
+            const target = e.currentTarget;
+            const val = parseInt(target.value, 10);
+            if (!isNaN(val)) {
+              handleForecastDaysChange(val);
+            } else {
+              // Reset to valid value if invalid
+              target.value = forecastDays.toString();
+            }
+          }}
+          disabled={$metricsStore.predictions.predictionInProgress}
+          class="forecast-input"
+          aria-label="Días a predecir"
+        />
+      </div>
+      
+      <div class="control-group">
+        <label for="prediction-type">Tipo:</label>
+        <select
+          id="prediction-type"
+          bind:value={predictionType}
+          disabled={$metricsStore.predictions.predictionInProgress}
+          class="type-select"
+        >
+          <option value="all">Todas</option>
+          <option value="sales">Ventas</option>
+          <option value="capacity">Capacidad</option>
+          <option value="stock">Inventario</option>
+        </select>
+      </div>
+      
+      <button
+        on:click={handleGeneratePredictions}
+        disabled={disabled}
+        class="generate-button"
+        class:disabled
+        class:loading={$metricsStore.predictions.predictionInProgress}
+      >
+        <Sparkles size={18} strokeWidth={1.5} style="display: inline-block; vertical-align: middle; margin-right: 6px;" />
+        {$metricsStore.predictions.predictionInProgress
+          ? "Generando..."
+          : "Generar predicciones"}
+      </button>
+    </div>
+  </div>
+
+  {#if $metricsStore.predictions.error}
+    <div class="error-banner">
+      {$metricsStore.predictions.error}
+    </div>
+  {/if}
+
+  {#if $metricsStore.predictions.generatedAt}
+    <div class="predictions-content">
+      <!-- Sales Predictions -->
+      {#if $metricsStore.predictions.sales && $metricsStore.predictions.sales.forecast.length > 0}
+        <div class="prediction-card">
+          <h3 class="card-title">💰 Predicción de Ventas</h3>
+          <div class="confidence-badge" class:high={$metricsStore.predictions.sales.confidence === "high"} class:medium={$metricsStore.predictions.sales.confidence === "medium"} class:low={$metricsStore.predictions.sales.confidence === "low"}>
+            Confianza: {$metricsStore.predictions.sales.confidence.toUpperCase()}
+          </div>
+          
+          <div class="forecast-list">
+            {#each $metricsStore.predictions.sales.forecast.slice(0, 7) as day}
+              <div class="forecast-item">
+                <span class="forecast-date">{new Date(day.date).toLocaleDateString()}</span>
+                <span class="forecast-value">
+                  ${(day.predicted_revenue_cents / 100).toFixed(2)}
+                </span>
+                <span class="forecast-count">{day.predicted_count} ventas</span>
+              </div>
+            {/each}
+          </div>
+          
+          {#if $metricsStore.predictions.sales.trend_factor}
+            <div class="trend-info">
+              Factor de tendencia: {$metricsStore.predictions.sales.trend_factor}
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Capacity Predictions -->
+      {#if $metricsStore.predictions.capacity && $metricsStore.predictions.capacity.forecast.length > 0}
+        <div class="prediction-card">
+          <h3 class="card-title">⏱️ Predicción de Capacidad</h3>
+          <div class="confidence-badge" class:high={$metricsStore.predictions.capacity.confidence === "high"} class:medium={$metricsStore.predictions.capacity.confidence === "medium"} class:low={$metricsStore.predictions.capacity.confidence === "low"}>
+            Confianza: {$metricsStore.predictions.capacity.confidence.toUpperCase()}
+          </div>
+          
+          <div class="forecast-list">
+            {#each $metricsStore.predictions.capacity.forecast.slice(0, 7) as day}
+              <div class="forecast-item">
+                <span class="forecast-date">{new Date(day.date).toLocaleDateString()}</span>
+                <span class="forecast-value">{day.predicted_active_timers} timers</span>
+                <span class="forecast-utilization">
+                  {(day.utilization_rate * 100).toFixed(0)}% utilización
+                </span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- Stock Predictions -->
+      {#if $metricsStore.predictions.stock && $metricsStore.predictions.stock.reorder_suggestions.length > 0}
+        <div class="prediction-card">
+          <h3 class="card-title">📦 Sugerencias de Reorden</h3>
+          <div class="confidence-badge" class:high={$metricsStore.predictions.stock.confidence === "high"} class:medium={$metricsStore.predictions.stock.confidence === "medium"} class:low={$metricsStore.predictions.stock.confidence === "low"}>
+            Confianza: {$metricsStore.predictions.stock.confidence.toUpperCase()}
+          </div>
+          
+          <div class="reorder-list">
+            {#each $metricsStore.predictions.stock.reorder_suggestions.slice(0, 10) as suggestion}
+              <div class="reorder-item" class:urgent={suggestion.days_until_out_of_stock <= 3}>
+                <div class="reorder-header">
+                  <span class="product-name">{suggestion.product_name}</span>
+                  <span class="days-until">
+                    {suggestion.days_until_out_of_stock} días restantes
+                  </span>
+                </div>
+                <div class="reorder-details">
+                  <span>Stock actual: {suggestion.current_stock}</span>
+                  <span>Uso diario predicho: {suggestion.predicted_daily_usage.toFixed(1)}</span>
+                  <span class="recommended-qty">
+                    Recomendado: {suggestion.recommended_reorder_qty} unidades
+                  </span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {:else if $metricsStore.predictions.stock}
+        <div class="prediction-card">
+          <div class="no-suggestions">
+            ✅ No hay sugerencias de reorden en este momento
+          </div>
+        </div>
+      {/if}
+
+      <!-- Top Customers Info (for predictions context) -->
+      {#if $metricsStore.top_customers && $metricsStore.top_customers.top_customers && $metricsStore.top_customers.top_customers.length > 0}
+        <div class="prediction-card">
+          <h3 class="card-title">👥 Clientes Top (Contexto para Predicciones)</h3>
+          <div class="info-badge">
+            Últimos {$metricsStore.top_customers.period_days} días
+          </div>
+          
+          <div class="customers-list">
+            {#each $metricsStore.top_customers.top_customers.slice(0, 5) as customer, index}
+              <div class="customer-item">
+                <div class="customer-header">
+                  <span class="customer-rank">#{index + 1}</span>
+                  <span class="customer-name">
+                    {customer.child_name}
+                    {#if customer.child_age}
+                      <span class="customer-age">({customer.child_age} años)</span>
+                    {/if}
+                  </span>
+                </div>
+                <div class="customer-stats">
+                  <span class="stat-item">
+                    <span class="stat-label">Visitas:</span>
+                    <span class="stat-value">{customer.visit_count}</span>
+                  </span>
+                  <span class="stat-item">
+                    <span class="stat-label">Total gastado:</span>
+                    <span class="stat-value">${((customer.total_revenue_cents || 0) / 100).toFixed(2)}</span>
+                  </span>
+                  <span class="stat-item">
+                    <span class="stat-label">Promedio por visita:</span>
+                    <span class="stat-value">
+                      ${((customer.total_revenue_cents || 0) / (customer.visit_count || 1) / 100).toFixed(2)}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            {/each}
+          </div>
+          
+          <div class="customers-note">
+            <small>
+              💡 Estos clientes frecuentes son considerados en las predicciones de ventas y capacidad
+            </small>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Sales by Type Predictions -->
+      {#if $metricsStore.predictions.sales_by_type && $metricsStore.predictions.sales_by_type.forecast}
+        <div class="prediction-card">
+          <h3 class="card-title">📊 Predicción de Ventas por Tipo</h3>
+          <div class="confidence-badge" class:high={$metricsStore.predictions.sales_by_type.confidence === "high"} class:medium={$metricsStore.predictions.sales_by_type.confidence === "medium"} class:low={$metricsStore.predictions.sales_by_type.confidence === "low"}>
+            Confianza: {$metricsStore.predictions.sales_by_type.confidence.toUpperCase()}
+          </div>
+          
+          <div class="type-tabs">
+            <button
+              class="type-tab"
+              class:active={activeTypeTab === "products"}
+              on:click={() => activeTypeTab = "products"}
+              type="button"
+            >
+              Productos
+            </button>
+            <button
+              class="type-tab"
+              class:active={activeTypeTab === "services"}
+              on:click={() => activeTypeTab = "services"}
+              type="button"
+            >
+              Servicios
+            </button>
+            <button
+              class="type-tab"
+              class:active={activeTypeTab === "packages"}
+              on:click={() => activeTypeTab = "packages"}
+              type="button"
+            >
+              Paquetes
+            </button>
+          </div>
+          
+          <div class="forecast-list">
+            {#if activeTypeTab === "products" && $metricsStore.predictions.sales_by_type.forecast.products}
+              {#each $metricsStore.predictions.sales_by_type.forecast.products.slice(0, 7) as day}
+                <div class="forecast-item">
+                  <span class="forecast-date">{new Date(day.date).toLocaleDateString()}</span>
+                  <span class="forecast-value">
+                    ${(day.predicted_revenue_cents / 100).toFixed(2)}
+                  </span>
+                  <span class="forecast-count">{day.predicted_count} ventas</span>
+                </div>
+              {/each}
+            {:else if activeTypeTab === "services" && $metricsStore.predictions.sales_by_type.forecast.services}
+              {#each $metricsStore.predictions.sales_by_type.forecast.services.slice(0, 7) as day}
+                <div class="forecast-item">
+                  <span class="forecast-date">{new Date(day.date).toLocaleDateString()}</span>
+                  <span class="forecast-value">
+                    ${(day.predicted_revenue_cents / 100).toFixed(2)}
+                  </span>
+                  <span class="forecast-count">{day.predicted_count} ventas</span>
+                </div>
+              {/each}
+            {:else if activeTypeTab === "packages" && $metricsStore.predictions.sales_by_type.forecast.packages}
+              {#each $metricsStore.predictions.sales_by_type.forecast.packages.slice(0, 7) as day}
+                <div class="forecast-item">
+                  <span class="forecast-date">{new Date(day.date).toLocaleDateString()}</span>
+                  <span class="forecast-value">
+                    ${(day.predicted_revenue_cents / 100).toFixed(2)}
+                  </span>
+                  <span class="forecast-count">{day.predicted_count} ventas</span>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        </div>
+      {/if}
+
+      <!-- Peak Hours Predictions -->
+      {#if $metricsStore.predictions.peak_hours && $metricsStore.predictions.peak_hours.forecast.length > 0}
+        <div class="prediction-card">
+          <h3 class="card-title">⏰ Predicción de Horas Pico</h3>
+          <div class="confidence-badge" class:high={$metricsStore.predictions.peak_hours.confidence === "high"} class:medium={$metricsStore.predictions.peak_hours.confidence === "medium"} class:low={$metricsStore.predictions.peak_hours.confidence === "low"}>
+            Confianza: {$metricsStore.predictions.peak_hours.confidence.toUpperCase()}
+          </div>
+          
+          <div class="forecast-list">
+            {#each $metricsStore.predictions.peak_hours.forecast.slice(0, 7) as day}
+              <div class="forecast-item">
+                <div class="forecast-header">
+                  <span class="forecast-date">{new Date(day.date).toLocaleDateString()}</span>
+                  {#if day.busiest_hour}
+                    <span class="busiest-hour">
+                      Hora más ocupada: {day.busiest_hour.hour}:00 ({day.busiest_hour.expected_activity.toFixed(1)} actividad)
+                    </span>
+                  {/if}
+                </div>
+                {#if day.predicted_peak_hours.length > 0}
+                  <div class="peak-hours-list">
+                    {#each day.predicted_peak_hours as peak}
+                      <span class="peak-hour-badge">
+                        {peak.hour}:00 ({peak.expected_activity.toFixed(1)})
+                      </span>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- Busiest Days Predictions -->
+      {#if $metricsStore.predictions.busiest_days && $metricsStore.predictions.busiest_days.forecast.length > 0}
+        <div class="prediction-card">
+          <h3 class="card-title">📅 Días Más Ocupados</h3>
+          <div class="confidence-badge" class:high={$metricsStore.predictions.busiest_days.confidence === "high"} class:medium={$metricsStore.predictions.busiest_days.confidence === "medium"} class:low={$metricsStore.predictions.busiest_days.confidence === "low"}>
+            Confianza: {$metricsStore.predictions.busiest_days.confidence.toUpperCase()}
+          </div>
+          
+          <div class="forecast-list">
+            {#each $metricsStore.predictions.busiest_days.forecast.slice(0, 7) as day}
+              <div class="forecast-item" class:top-rank={day.rank <= 3}>
+                <div class="forecast-header">
+                  <span class="forecast-date">
+                    {new Date(day.date).toLocaleDateString()} ({day.day_of_week})
+                  </span>
+                  <span class="rank-badge">#{day.rank}</span>
+                </div>
+                <span class="forecast-value">
+                  Actividad predicha: ${(day.predicted_activity / 100).toFixed(2)}
+                </span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if $metricsStore.predictions.generatedAt}
+        <div class="generated-at">
+          Generado: {new Date($metricsStore.predictions.generatedAt).toLocaleString()}
+        </div>
+      {/if}
+    </div>
+  {:else}
+    <div class="empty-state">
+      <p>Presiona "Generar predicciones" para ver análisis y proyecciones</p>
+    </div>
+  {/if}
+</div>
+
+<style>
+  .predictions-panel {
+    background: var(--theme-bg-card);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    border: 1px solid var(--border-primary);
+    border-radius: 16px;
+    padding: var(--spacing-xl);
+    margin-top: var(--spacing-xl);
+    box-shadow: 
+      0 8px 24px rgba(0, 0, 0, 0.15),
+      0 0 20px var(--glow-primary),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Hover effect - Hybrid card10 + metric-card */
+  .predictions-panel:hover {
+    transform: translateY(-4px);
+    border-color: rgba(0, 147, 247, 0.5);
+    box-shadow: 
+      0 20px 60px rgba(0, 0, 0, 0.3),
+      0 0 30px var(--glow-primary),
+      0 0 40px var(--glow-secondary),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .panel-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #f0e7ff;
+    margin: 0;
+  }
+
+  .controls {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .control-group label {
+    font-size: 0.875rem;
+    color: #9ca3af;
+  }
+
+  /* Brutalist style for input and select */
+  .forecast-input,
+  .type-select {
+    border: 2px solid var(--accent-primary);
+    box-shadow: 3px 3px 0px 0px var(--accent-primary);
+    background-color: var(--theme-bg-elevated);
+    color: var(--text-primary);
+    font-weight: 600;
+    border-radius: var(--radius-md);
+    padding: 0.5rem;
+    font-size: 0.875rem;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .forecast-input {
+    width: 80px;
+    text-align: center;
+  }
+
+  .forecast-input:focus,
+  .type-select:focus {
+    outline: none;
+    box-shadow: none;
+    border-width: 3px;
+    transform: translate(3px, 3px);
+    background-color: var(--accent-primary);
+    color: var(--text-inverse);
+  }
+
+  .forecast-input:hover:not(:disabled):not(:focus),
+  .type-select:hover:not(:disabled):not(:focus) {
+    border-color: var(--accent-primary);
+    box-shadow: 2px 2px 0px 0px var(--accent-primary);
+  }
+
+  .forecast-input:disabled,
+  .type-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: 1px 1px 0px 0px var(--accent-primary);
+  }
+
+  .type-select {
+    width: 120px;
+    cursor: pointer;
+  }
+
+  /* Brutalist style for generate button */
+  .generate-button {
+    border: 2px solid var(--accent-primary);
+    box-shadow: 3px 3px 0px 0px var(--accent-primary);
+    background-color: var(--theme-bg-elevated);
+    color: var(--accent-primary);
+    font-weight: 600;
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 1rem;
+  }
+
+  .generate-button:hover:not(.disabled) {
+    box-shadow: none;
+    border-width: 3px;
+    transform: translate(3px, 3px);
+    background-color: var(--accent-primary);
+    color: var(--text-inverse);
+  }
+
+  .generate-button:active:not(.disabled) {
+    transform: translate(2px, 2px);
+    transition-duration: 0.1s;
+  }
+
+  .generate-button.disabled,
+  .generate-button.loading {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: 1px 1px 0px 0px var(--accent-primary);
+    background-color: var(--theme-bg-elevated);
+    color: var(--accent-primary);
+  }
+
+  .generate-button.loading {
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 0.8;
+    }
+  }
+
+  .error-banner {
+    background: #ef4444;
+    color: white;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    text-align: center;
+    font-weight: 500;
+  }
+
+  .predictions-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .prediction-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+  }
+
+  .card-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #f0e7ff;
+    margin: 0 0 1rem 0;
+  }
+
+  .confidence-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+  }
+
+  .confidence-badge.high {
+    background: #10b981;
+    color: white;
+  }
+
+  .confidence-badge.medium {
+    background: #f59e0b;
+    color: white;
+  }
+
+  .confidence-badge.low {
+    background: #ef4444;
+    color: white;
+  }
+
+  .forecast-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .forecast-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 0.5rem;
+    gap: 1rem;
+  }
+
+  .forecast-date {
+    font-weight: 600;
+    color: #d1d5db;
+    min-width: 120px;
+  }
+
+  .forecast-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #d946ef;
+  }
+
+  .forecast-count,
+  .forecast-utilization {
+    color: #9ca3af;
+    font-size: 0.875rem;
+  }
+
+  .trend-info {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    color: #9ca3af;
+    font-size: 0.875rem;
+  }
+
+  .reorder-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .reorder-item {
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 0.5rem;
+    border-left: 4px solid #6366f1;
+  }
+
+  .reorder-item.urgent {
+    border-left-color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+  }
+
+  .reorder-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .product-name {
+    font-weight: 600;
+    color: #f0e7ff;
+  }
+
+  .days-until {
+    font-size: 0.875rem;
+    color: #f59e0b;
+    font-weight: 600;
+  }
+
+  .reorder-item.urgent .days-until {
+    color: #ef4444;
+  }
+
+  .reorder-details {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.875rem;
+    color: #9ca3af;
+    flex-wrap: wrap;
+  }
+
+  .recommended-qty {
+    color: #10b981;
+    font-weight: 600;
+  }
+
+  .no-suggestions {
+    text-align: center;
+    color: #10b981;
+    padding: 2rem;
+    font-weight: 500;
+  }
+
+  .generated-at {
+    text-align: center;
+    color: #6b7280;
+    font-size: 0.875rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .empty-state {
+    text-align: center;
+    color: #6b7280;
+    padding: 3rem;
+    font-style: italic;
+  }
+
+  .type-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .type-tab {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    color: #9ca3af;
+    border: none;
+    background: transparent;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  .type-tab:hover {
+    color: #d1d5db;
+  }
+
+  .type-tab.active {
+    color: #d946ef;
+    border-bottom-color: #d946ef;
+    font-weight: 600;
+  }
+
+  .forecast-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+
+  .busiest-hour {
+    font-size: 0.875rem;
+    color: #f59e0b;
+    font-weight: 600;
+  }
+
+  .peak-hours-list {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+  }
+
+  .peak-hour-badge {
+    background: rgba(99, 102, 241, 0.2);
+    border: 1px solid #6366f1;
+    border-radius: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    color: #a5b4fc;
+  }
+
+  .rank-badge {
+    background: #d946ef;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .forecast-item.top-rank {
+    border-left: 4px solid #10b981;
+    background: rgba(16, 185, 129, 0.1);
+  }
+
+  /* Mobile: Optimize panel header and controls for touch devices */
+  @media (max-width: 768px) {
+    .panel-header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: var(--spacing-md);
+    }
+
+    .panel-title {
+      font-size: var(--text-xl);
+      text-align: center;
+    }
+
+    .controls {
+      flex-direction: column;
+      width: 100%;
+      gap: var(--spacing-md);
+      flex-wrap: nowrap;
+    }
+
+    .control-group {
+      width: 100%;
+    }
+
+    .forecast-input,
+    .type-select {
+      width: 100%;
+      min-height: 44px; /* Minimum touch target size for accessibility */
+      text-align: left;
+    }
+
+    .forecast-input {
+      text-align: center;
+    }
+
+    .generate-button {
+      width: 100%;
+      min-height: 44px; /* Minimum touch target size for accessibility */
+      justify-content: center;
+    }
+  }
+
+  /* Prevent hover transform issues on touch devices */
+  @media (hover: none) and (pointer: coarse) {
+    .generate-button:hover {
+      transform: none;
+      box-shadow: 3px 3px 0px 0px var(--accent-primary);
+      border-width: 2px;
+    }
+
+    .forecast-input:hover:not(:disabled):not(:focus),
+    .type-select:hover:not(:disabled):not(:focus) {
+      transform: none;
+    }
+  }
+</style>
+
+

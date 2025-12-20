@@ -1,0 +1,42 @@
+// Template for SvelteKit apps
+// Add these scripts to apps/<app-name>/package.json
+{
+  "scripts": {
+    "lint": "eslint . --ext .ts,.js,.svelte",
+    "lint:fix": "eslint . --ext .ts,.js,.svelte --fix",
+    "format": "prettier --write \"**/*.{ts,js,svelte,json,md}\"",
+    "typecheck": "svelte-check --workspace ."
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

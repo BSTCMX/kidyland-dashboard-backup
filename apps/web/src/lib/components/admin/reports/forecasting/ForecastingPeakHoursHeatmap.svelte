@@ -1,0 +1,465 @@
+<script lang="ts">
+  /**
+   * ForecastingPeakHoursHeatmap - Heatmap showing predicted peak hours by day of week.
+   * 
+   * Displays a heatmap matrix (day of week x hour) showing predicted activity/peak hours.
+   * Reuses pattern from ServicesCapacityHeatmap.svelte.
+   * Note: This component works with forecast data, extrapolating peak hours from day_of_week patterns.
+   */
+  import type { SegmentedPredictionsResponse } from '$lib/stores/reports';
+
+  export let predictionsData: SegmentedPredictionsResponse | null = null;
+  export let moduleKey: "recepcion" | "kidibar" | "total" | null = null;
+  export let forecastDays: number = 7;
+
+  // Get forecast data and calculate peak hour patterns
+  $: forecastData = predictionsData && moduleKey && predictionsData.predictions[moduleKey]?.sales?.forecast 
+    ? predictionsData.predictions[moduleKey].sales.forecast 
+    : [];
+
+  // Calculate hourly activity patterns from forecast data
+  // Since we don't have actual hour data in forecast, we'll simulate based on day_of_week_factor
+  // and typical business patterns (higher activity in afternoons/evenings)
+  $: hourlyPatterns = forecastData.length > 0 ? (() => {
+    const patterns: { [key: string]: { [key: number]: number } } = {}; // { dayIndex-hour: activity }
+    
+    // Typical business hour pattern (0 = midnight, 23 = 11 PM)
+    // Higher activity in afternoon/evening (14-20), lower in morning/night
+    const typicalHourPattern = Array.from({ length: 24 }, (_, hour) => {
+      if (hour >= 14 && hour <= 20) return 0.8; // Afternoon/evening peak
+      if (hour >= 10 && hour <= 13) return 0.6; // Midday
+      if (hour >= 7 && hour <= 9) return 0.4; // Morning
+      return 0.2; // Night/early morning
+    });
+
+    forecastData.forEach((day: any) => {
+      const date = new Date(day.date);
+      const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+      const dayFactor = day.day_of_week_factor || 1.0;
+      
+      // Apply typical hour pattern scaled by day factor
+      typicalHourPattern.forEach((baseActivity, hour) => {
+        const key = `${dayOfWeek}-${hour}`;
+        if (!patterns[key]) {
+          patterns[key] = 0;
+        }
+        patterns[key] += baseActivity * dayFactor * (day.predicted_count || 0);
+      });
+    });
+
+    // Average across days with same day-of-week
+    Object.keys(patterns).forEach(key => {
+      const [dayOfWeekStr] = key.split('-');
+      const dayOfWeek = parseInt(dayOfWeekStr);
+      const matchingDays = forecastData.filter((day: any) => {
+        const date = new Date(day.date);
+        return date.getDay() === dayOfWeek;
+      }).length;
+      
+      if (matchingDays > 0) {
+        patterns[key] = patterns[key] / matchingDays;
+      }
+    });
+
+    return patterns;
+  })() : {};
+
+  // Create heatmap matrix for visualization
+  $: heatmapMatrix = (() => {
+    const matrix: { [key: string]: { intensity: number; activity: number } } = {};
+    
+    // Normalize intensities (0-1 scale)
+    const allActivities = Object.values(hourlyPatterns);
+    const maxActivity = allActivities.length > 0 ? Math.max(...allActivities) : 1;
+    const minActivity = allActivities.length > 0 ? Math.min(...allActivities) : 0;
+    
+    Object.entries(hourlyPatterns).forEach(([key, activity]) => {
+      const intensity = maxActivity > minActivity 
+        ? (activity - minActivity) / (maxActivity - minActivity)
+        : 0;
+      matrix[key] = { intensity, activity };
+    });
+    
+    return matrix;
+  })();
+
+  // Get color for intensity (0-1 scale) - Enhanced for light/dark mode visibility
+  function getColorForIntensity(intensity: number): string {
+    // Check if dark mode is active
+    const isDarkMode = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    
+    if (intensity === 0) return isDarkMode ? '#374151' : '#f3f4f6'; // Background color
+    
+    if (intensity <= 0.25) {
+      // Low intensity - Light green (light mode) / Dark green (dark mode)
+      return isDarkMode ? '#166534' : '#86efac';
+    }
+    
+    if (intensity <= 0.5) {
+      // Moderate intensity - Yellow (light mode) / Dark yellow (dark mode)
+      return isDarkMode ? '#ca8a04' : '#fef08a';
+    }
+    
+    if (intensity <= 0.75) {
+      // High intensity - Orange (light mode) / Dark orange (dark mode)
+      return isDarkMode ? '#ea580c' : '#fed7aa';
+    }
+    
+    // Very high intensity - Red (both modes, but adjusted)
+    return isDarkMode ? '#dc2626' : '#fecaca';
+  }
+  
+  // Get text color for intensity (ensures readability)
+  function getTextColorForIntensity(intensity: number): string {
+    const isDarkMode = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+    
+    if (intensity === 0) return 'var(--text-secondary)';
+    
+    if (intensity <= 0.25) {
+      return isDarkMode ? '#d1fae5' : '#065f46';
+    }
+    
+    if (intensity <= 0.5) {
+      return isDarkMode ? '#fef08a' : '#854d0e';
+    }
+    
+    if (intensity <= 0.75) {
+      return isDarkMode ? '#fed7aa' : '#9a3412';
+    }
+    
+    return isDarkMode ? '#fee2e2' : '#991b1b';
+  }
+
+  const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+</script>
+
+<div class="forecasting-peak-hours-heatmap">
+  {#if !predictionsData || !moduleKey || forecastData.length === 0}
+    <div class="empty-state">
+      <p>No hay datos de predicción disponibles para mostrar el mapa de horas pico.</p>
+    </div>
+  {:else}
+    <div class="peak-hours-container">
+      <div class="section-header">
+        <h3 class="section-title">Horas Pico Previstas</h3>
+        <p class="section-description">
+          Patrón de actividad prevista por día de la semana y hora. 
+          Basado en predicciones de ventas y patrones típicos de negocio.
+        </p>
+      </div>
+      
+      <div class="heatmap-table-container">
+        <table class="peak-hours-heatmap-table">
+          <thead>
+            <tr>
+              <th class="day-header">Día / Hora</th>
+              {#each hours as hour}
+                <th class="hour-header">{hour}:00</th>
+              {/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each dayNames as dayName, dayIndex}
+              <tr>
+                <td class="day-label">{dayName}</td>
+                {#each hours as hour}
+                  {@const key = `${dayIndex}-${hour}`}
+                  {@const cellData = heatmapMatrix[key]}
+                  {@const intensity = cellData?.intensity ?? 0}
+                  {@const activity = cellData?.activity ?? 0}
+                  <td 
+                    class="heatmap-cell" 
+                    style="background-color: {getColorForIntensity(intensity)}; color: {getTextColorForIntensity(intensity)};"
+                    title="{dayName} {hour}:00 - Actividad prevista: {activity.toFixed(1)}"
+                  >
+                    <span class="cell-value">
+                      {#if activity > 0}
+                        {Math.round(activity)}
+                      {/if}
+                    </span>
+                  </td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      
+      <div class="intensity-legend">
+        <span class="legend-label">Intensidad de Actividad:</span>
+        <div class="legend-items">
+          <div class="legend-item">
+            <span class="legend-color" style="background-color: #86efac;"></span>
+            <span class="legend-text">Baja</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color" style="background-color: #fde047;"></span>
+            <span class="legend-text">Moderada</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color" style="background-color: #fb923c;"></span>
+            <span class="legend-text">Alta</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-color" style="background-color: #ef4444;"></span>
+            <span class="legend-text">Muy Alta</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+</div>
+
+<style>
+  .forecasting-peak-hours-heatmap {
+    width: 100%;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: var(--spacing-xl);
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  .peak-hours-container {
+    background: var(--theme-bg-card);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+  }
+
+  .section-header {
+    margin-bottom: var(--spacing-lg);
+  }
+
+  .section-title {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--spacing-xs) 0;
+  }
+
+  .section-description {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .heatmap-table-container {
+    overflow-x: auto;
+    overflow-y: visible;
+    margin-bottom: var(--spacing-lg);
+    /* Enable smooth scrolling on mobile */
+    -webkit-overflow-scrolling: touch;
+    /* Add subtle scroll indicator */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-primary) transparent;
+  }
+
+  .heatmap-table-container::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .heatmap-table-container::-webkit-scrollbar-track {
+    background: var(--theme-bg-secondary);
+    border-radius: var(--radius-sm);
+  }
+
+  .heatmap-table-container::-webkit-scrollbar-thumb {
+    background: var(--border-primary);
+    border-radius: var(--radius-sm);
+  }
+
+  .heatmap-table-container::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-primary);
+  }
+
+  .peak-hours-heatmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-xs);
+  }
+
+  .peak-hours-heatmap-table thead {
+    background: var(--theme-bg-secondary);
+    border-bottom: 2px solid var(--border-primary);
+  }
+
+  .peak-hours-heatmap-table th {
+    padding: var(--spacing-xs);
+    text-align: center;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+  }
+
+  .day-header {
+    position: sticky;
+    left: 0;
+    background: var(--theme-bg-secondary);
+    z-index: 2;
+  }
+
+  .hour-header {
+    min-width: 40px;
+  }
+
+  .peak-hours-heatmap-table td {
+    padding: var(--spacing-xs);
+    text-align: center;
+    border: 1px solid var(--border-primary);
+    transition: opacity 0.2s;
+  }
+
+  .day-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--theme-bg-secondary);
+    position: sticky;
+    left: 0;
+    z-index: 1;
+  }
+
+  .heatmap-cell {
+    cursor: pointer;
+    min-width: 40px;
+    min-height: 32px;
+  }
+
+  .heatmap-cell:hover {
+    opacity: 0.8;
+    border-color: var(--accent-primary);
+  }
+
+  .cell-value {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    /* Color is set inline via getTextColorForIntensity for better contrast */
+  }
+
+  .intensity-legend {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+  }
+
+  .legend-label {
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+
+  .legend-items {
+    display: flex;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+  }
+
+  .legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-primary);
+  }
+
+  .legend-text {
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+  }
+
+  /* Desktop: In module-view, allow natural fitting without forced scroll */
+  @media (min-width: 1025px) {
+    :global(.module-view) .heatmap-table-container {
+      overflow-x: visible; /* Allow natural fitting on desktop */
+    }
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 640px) {
+    .peak-hours-container {
+      padding: var(--spacing-md);
+      /* Remove side padding to allow edge-to-edge scroll */
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    .section-header {
+      padding-left: var(--spacing-md);
+      padding-right: var(--spacing-md);
+    }
+
+    .section-title {
+      font-size: var(--text-lg);
+    }
+
+    .section-description {
+      font-size: var(--text-xs);
+    }
+
+    .heatmap-table-container {
+      /* Enable horizontal scroll on mobile with edge-to-edge UX */
+      overflow-x: auto;
+      overflow-y: visible;
+      padding-bottom: var(--spacing-xs);
+      padding-left: var(--spacing-md);
+      padding-right: var(--spacing-md);
+    }
+
+    .peak-hours-heatmap-table {
+      min-width: 600px; /* Ensure table is wide enough to require scroll */
+      font-size: 10px;
+    }
+
+    .day-header {
+      min-width: 50px;
+      font-size: 9px;
+    }
+
+    .hour-header {
+      min-width: 30px;
+      font-size: 9px;
+      padding: var(--spacing-xs) 2px;
+    }
+
+    .day-label {
+      min-width: 50px;
+      font-size: 9px;
+      padding: var(--spacing-xs) 4px;
+    }
+
+    .heatmap-cell {
+      min-width: 30px;
+      min-height: 26px;
+      padding: 2px;
+    }
+
+    .cell-value {
+      font-size: 8px;
+    }
+
+    .intensity-legend {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--spacing-sm);
+      padding-left: var(--spacing-md);
+      padding-right: var(--spacing-md);
+    }
+
+    .legend-label {
+      font-size: var(--text-xs);
+    }
+
+    .legend-items {
+      gap: var(--spacing-sm);
+    }
+  }
+</style>
