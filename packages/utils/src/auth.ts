@@ -67,8 +67,23 @@ export async function login(
 ): Promise<void> {
   // Use same logic as api.ts for consistency
   const env = typeof import.meta !== 'undefined' && (import.meta as any).env;
-  const apiUrl = env?.VITE_API_URL || 
-    (typeof window !== 'undefined' && window.location ? window.location.origin : "http://localhost:8000");
+  let apiUrl: string;
+  
+  // 1. Explicit override via env variable (highest priority)
+  if (env?.VITE_API_URL) {
+    apiUrl = env.VITE_API_URL;
+  } else if (typeof window !== 'undefined' && window.location) {
+    // 2. In development mode: use backend port 8000
+    if (env?.MODE === 'development' || env?.DEV) {
+      apiUrl = "http://localhost:8000";
+    } else {
+      // In production: use same origin
+      apiUrl = window.location.origin;
+    }
+  } else {
+    // 3. Fallback for SSR or non-browser contexts
+    apiUrl = "http://localhost:8000";
+  }
   
   const res = await fetch(`${apiUrl}/auth/login`, {
     method: "POST",

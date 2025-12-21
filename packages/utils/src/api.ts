@@ -29,9 +29,13 @@ function getApiUrl(): string {
     return env.VITE_API_URL;
   }
 
-  // 2. In browser context: always use same origin (production or development)
-  // This ensures same-origin requests in production, avoiding CORS issues
+  // 2. In browser context
   if (typeof window !== 'undefined' && window.location) {
+    // In development mode: use backend port 8000
+    if (env?.MODE === 'development' || env?.DEV) {
+      return "http://localhost:8000";
+    }
+    // In production: use same origin (no CORS needed)
     return window.location.origin;
   }
 

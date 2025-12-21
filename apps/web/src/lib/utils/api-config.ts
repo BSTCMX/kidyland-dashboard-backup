@@ -27,9 +27,14 @@ export function getApiUrl(): string {
     return apiUrl;
   }
 
-  // 2. In browser context: always use same origin (production or development)
-  // This ensures same-origin requests in production, avoiding CORS issues
+  // 2. In development mode (browser): use backend port 8000
   if (typeof window !== 'undefined' && window.location) {
+    // Check if we're in development mode
+    if (import.meta.env.MODE === 'development' || import.meta.env.DEV) {
+      // In development, backend is on port 8000
+      return "http://localhost:8000";
+    }
+    // In production browser: use same origin (no CORS needed)
     return window.location.origin;
   }
 

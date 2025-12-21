@@ -214,6 +214,7 @@ class ReportService:
         sucursal_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        module: Optional[str] = None,  # "recepcion", "kidibar", or None for all
         use_cache: bool = True
     ) -> Dict[str, Any]:
         """
@@ -224,6 +225,7 @@ class ReportService:
             sucursal_id: Optional sucursal ID to filter by
             start_date: Optional start date (defaults to today)
             end_date: Optional end date (defaults to today)
+            module: Optional module filter ("recepcion", "kidibar", or None for all)
             use_cache: Whether to use cache (default: True)
             
         Returns:
@@ -242,12 +244,13 @@ class ReportService:
                 }
             }
         """
-        # Generate cache key
+        # Generate cache key (include module)
         cache_key = self.cache._generate_key(
             "sales",
             sucursal_id,
             start_date.isoformat() if start_date else None,
-            end_date.isoformat() if end_date else None
+            end_date.isoformat() if end_date else None,
+            module
         )
         
         # Check cache
@@ -263,7 +266,47 @@ class ReportService:
         if not end_date:
             end_date = date.today()
         
-        # Build query
+        start_datetime = datetime.combine(start_date, datetime.min.time())
+        end_datetime = datetime.combine(end_date, datetime.max.time())
+        
+        # Convert sucursal_id to UUID if provided
+        sucursal_uuid = None
+        if sucursal_id:
+            try:
+                sucursal_uuid = UUID(sucursal_id)
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid sucursal_id format: {sucursal_id}")
+        
+        # Determine which sale types to include based on module
+        sale_types_to_include = []
+        include_packages = False
+        
+        if module == "recepcion":
+            sale_types_to_include = ["service"]
+            include_packages = True  # Will filter for service packages
+        elif module == "kidibar":
+            sale_types_to_include = ["product"]
+            include_packages = True  # Will filter for product packages
+        else:
+            # module is None - include all types
+            sale_types_to_include = ["service", "product", "package"]
+            include_packages = True
+        
+        # Build base query for direct sales (service or product)
+        base_conditions = [
+            Sale.created_at >= start_datetime,
+            Sale.created_at <= end_datetime
+        ]
+        
+        if sale_types_to_include and len(sale_types_to_include) < 3:
+            # Filter by specific types (recepcion or kidibar)
+            base_conditions.append(Sale.tipo.in_(sale_types_to_include))
+        # If all types, no tipo filter needed
+        
+        if sucursal_uuid:
+            base_conditions.append(Sale.sucursal_id == sucursal_uuid)
+        
+        # Query for direct sales (service or product, depending on module)
         query = select(
             func.sum(Sale.total_cents).label("total_revenue"),
             func.count(Sale.id).label("sales_count"),
@@ -272,21 +315,15 @@ class ReportService:
             Sale.sucursal_id,
             Sale.payment_method
         ).where(
-            and_(
-                Sale.created_at >= datetime.combine(start_date, datetime.min.time()),
-                Sale.created_at <= datetime.combine(end_date, datetime.max.time())
-            )
+            and_(*base_conditions)
         )
-        
-        if sucursal_id:
-            query = query.where(Sale.sucursal_id == sucursal_id)
         
         query = query.group_by(Sale.tipo, Sale.sucursal_id, Sale.payment_method)
         
         result = await db.execute(query)
         rows = result.all()
         
-        # Aggregate results
+        # Aggregate results from direct sales
         total_revenue_cents = 0
         total_sales_count = 0
         revenue_by_type: Dict[str, int] = {}
@@ -312,6 +349,73 @@ class ReportService:
             payment = row.payment_method or "unknown"
             revenue_by_payment_method[payment] = revenue_by_payment_method.get(payment, 0) + revenue
         
+        # Handle package sales if needed
+        if include_packages:
+            package_query = select(
+                SaleItem.ref_id.label("package_id"),
+                Sale.total_cents.label("total_cents"),
+                Sale.sucursal_id,
+                Sale.payment_method
+            ).join(
+                Sale, SaleItem.sale_id == Sale.id
+            ).where(
+                and_(
+                    SaleItem.type == "package",
+                    Sale.tipo == "package",
+                    Sale.created_at >= start_datetime,
+                    Sale.created_at <= end_datetime
+                )
+            )
+            
+            if sucursal_uuid:
+                package_query = package_query.where(Sale.sucursal_id == sucursal_uuid)
+            
+            package_result = await db.execute(package_query)
+            package_rows = package_result.all()
+            
+            if package_rows:
+                package_ids = list(set(row.package_id for row in package_rows))
+                packages_query = select(Package).where(Package.id.in_(package_ids))
+                packages_result = await db.execute(packages_query)
+                packages = packages_result.scalars().all()
+                
+                # Filter packages by module
+                if module == "recepcion":
+                    service_package_ids = set(get_service_package_ids(list(packages)))
+                    for row in package_rows:
+                        if row.package_id in service_package_ids:
+                            revenue = int(row.total_cents or 0)
+                            total_revenue_cents += revenue
+                            total_sales_count += 1
+                            revenue_by_type["package"] = revenue_by_type.get("package", 0) + revenue
+                            suc_id = str(row.sucursal_id) if row.sucursal_id else "unknown"
+                            revenue_by_sucursal[suc_id] = revenue_by_sucursal.get(suc_id, 0) + revenue
+                            payment = row.payment_method or "unknown"
+                            revenue_by_payment_method[payment] = revenue_by_payment_method.get(payment, 0) + revenue
+                elif module == "kidibar":
+                    product_package_ids = set(get_product_package_ids(list(packages)))
+                    for row in package_rows:
+                        if row.package_id in product_package_ids:
+                            revenue = int(row.total_cents or 0)
+                            total_revenue_cents += revenue
+                            total_sales_count += 1
+                            revenue_by_type["package"] = revenue_by_type.get("package", 0) + revenue
+                            suc_id = str(row.sucursal_id) if row.sucursal_id else "unknown"
+                            revenue_by_sucursal[suc_id] = revenue_by_sucursal.get(suc_id, 0) + revenue
+                            payment = row.payment_method or "unknown"
+                            revenue_by_payment_method[payment] = revenue_by_payment_method.get(payment, 0) + revenue
+                else:
+                    # module is None - include all packages
+                    for row in package_rows:
+                        revenue = int(row.total_cents or 0)
+                        total_revenue_cents += revenue
+                        total_sales_count += 1
+                        revenue_by_type["package"] = revenue_by_type.get("package", 0) + revenue
+                        suc_id = str(row.sucursal_id) if row.sucursal_id else "unknown"
+                        revenue_by_sucursal[suc_id] = revenue_by_sucursal.get(suc_id, 0) + revenue
+                        payment = row.payment_method or "unknown"
+                        revenue_by_payment_method[payment] = revenue_by_payment_method.get(payment, 0) + revenue
+        
         # Calculate ATV
         avg_transaction_value_cents = (
             int(total_revenue_cents / total_sales_count)
@@ -320,22 +424,60 @@ class ReportService:
         )
         
         # Calculate unique customers (separate query following project pattern)
-        unique_customers_query = select(
-            func.count(func.distinct(Sale.payer_name)).label("unique_customers")
-        ).where(
-            and_(
-                Sale.payer_name.isnot(None),
-                Sale.payer_name != '',
-                Sale.created_at >= datetime.combine(start_date, datetime.min.time()),
-                Sale.created_at <= datetime.combine(end_date, datetime.max.time())
+        # For recepcion: count distinct Timer.child_name
+        # For kidibar: count distinct Sale.payer_name for product sales
+        # For all: combine both
+        unique_customers = 0
+        
+        if not module or module == "recepcion":
+            # Recepcion customers (from Timer)
+            recepcion_customers_query = select(
+                func.count(func.distinct(Timer.child_name)).label("unique_customers")
+            ).join(
+                Sale, Timer.sale_id == Sale.id
+            ).where(
+                and_(
+                    Timer.child_name.isnot(None),
+                    Timer.child_name != '',
+                    Sale.created_at >= start_datetime,
+                    Sale.created_at <= end_datetime
+                )
             )
-        )
+            
+            if module == "recepcion":
+                # Only service sales for recepcion
+                recepcion_customers_query = recepcion_customers_query.where(
+                    Sale.tipo == "service"
+                )
+            
+            if sucursal_uuid:
+                recepcion_customers_query = recepcion_customers_query.where(Sale.sucursal_id == sucursal_uuid)
+            
+            recepcion_result = await db.execute(recepcion_customers_query)
+            recepcion_unique = recepcion_result.scalar() or 0
+            unique_customers += recepcion_unique
         
-        if sucursal_id:
-            unique_customers_query = unique_customers_query.where(Sale.sucursal_id == sucursal_id)
+        if not module or module == "kidibar":
+            # Kidibar customers (from Sale.payer_name for product sales)
+            kidibar_customers_query = select(
+                func.count(func.distinct(Sale.payer_name)).label("unique_customers")
+            ).where(
+                and_(
+                    Sale.tipo == "product",
+                    Sale.payer_name.isnot(None),
+                    Sale.payer_name != '',
+                    Sale.created_at >= start_datetime,
+                    Sale.created_at <= end_datetime
+                )
+            )
+            
+            if sucursal_uuid:
+                kidibar_customers_query = kidibar_customers_query.where(Sale.sucursal_id == sucursal_uuid)
+            
+            kidibar_result = await db.execute(kidibar_customers_query)
+            kidibar_unique = kidibar_result.scalar() or 0
+            unique_customers += kidibar_unique
         
-        unique_customers_result = await db.execute(unique_customers_query)
-        unique_customers = unique_customers_result.scalar() or 0
         
         report = {
             "total_revenue_cents": total_revenue_cents,
@@ -356,7 +498,7 @@ class ReportService:
             await self.cache.set(cache_key, report, ttl=300)  # 5 minutes
         
         logger.info(
-            f"Sales report generated: {total_sales_count} sales, "
+            f"Sales report generated: module={module}, {total_sales_count} sales, "
             f"${total_revenue_cents/100:.2f} revenue, "
             f"{unique_customers} unique customers"
         )
@@ -369,6 +511,7 @@ class ReportService:
         sucursal_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        module: Optional[str] = None,  # "recepcion", "kidibar", or None for all
         use_cache: bool = True
     ) -> Dict[str, Any]:
         """
@@ -379,6 +522,7 @@ class ReportService:
             sucursal_id: Optional sucursal ID to filter by
             start_date: Optional start date (defaults to 30 days ago)
             end_date: Optional end date (defaults to today)
+            module: Optional module filter ("recepcion", "kidibar", or None for all)
             use_cache: Whether to use cache (default: True)
             
         Returns:
@@ -399,12 +543,13 @@ class ReportService:
                 }
             }
         """
-        # Generate cache key
+        # Generate cache key (include module)
         cache_key = self.cache._generate_key(
             "sales_timeseries",
             sucursal_id,
             start_date.isoformat() if start_date else None,
-            end_date.isoformat() if end_date else None
+            end_date.isoformat() if end_date else None,
+            module
         )
         
         # Check cache
@@ -420,41 +565,178 @@ class ReportService:
         if not start_date:
             start_date = end_date - timedelta(days=30)
         
-        # Build query to aggregate by day
+        start_datetime = datetime.combine(start_date, datetime.min.time())
+        end_datetime = datetime.combine(end_date, datetime.max.time())
+        
+        # Convert sucursal_id to UUID if provided
+        sucursal_uuid = None
+        if sucursal_id:
+            try:
+                sucursal_uuid = UUID(sucursal_id)
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid sucursal_id format: {sucursal_id}")
+        
+        # Determine which sale types to include based on module
+        sale_types_to_include = []
+        
+        if module == "recepcion":
+            sale_types_to_include = ["service"]
+        elif module == "kidibar":
+            sale_types_to_include = ["product"]
+        else:
+            # module is None - include all types
+            sale_types_to_include = ["service", "product"]
+        
+        # Build query for direct sales (service or product)
+        base_conditions = [
+            Sale.created_at >= start_datetime,
+            Sale.created_at <= end_datetime
+        ]
+        
+        if sale_types_to_include:
+            base_conditions.append(Sale.tipo.in_(sale_types_to_include))
+        
+        if sucursal_uuid:
+            base_conditions.append(Sale.sucursal_id == sucursal_uuid)
+        
+        # Query for direct sales aggregated by day
         query = select(
             func.date(Sale.created_at).label("sale_date"),
             func.sum(Sale.total_cents).label("total_revenue"),
             func.count(Sale.id).label("sales_count"),
             func.avg(Sale.total_cents).label("avg_transaction_value")
         ).where(
-            and_(
-                func.date(Sale.created_at) >= start_date,
-                func.date(Sale.created_at) <= end_date
-            )
+            and_(*base_conditions)
         )
-        
-        if sucursal_id:
-            query = query.where(Sale.sucursal_id == sucursal_id)
         
         query = query.group_by(func.date(Sale.created_at)).order_by(func.date(Sale.created_at))
         
         result = await db.execute(query)
         rows = result.all()
         
-        # Transform to time series format
-        timeseries = []
+        # Transform to time series format (dictionary by date for easy merging)
+        timeseries_dict: Dict[str, Dict[str, Any]] = {}
         for row in rows:
             sale_date = row.sale_date
+            date_str = sale_date.isoformat() if isinstance(sale_date, date) else sale_date
             revenue_cents = int(row.total_revenue or 0)
             sales_count = int(row.sales_count or 0)
             atv_cents = int(row.avg_transaction_value or 0)
             
-            timeseries.append({
-                "date": sale_date.isoformat() if isinstance(sale_date, date) else sale_date,
-                "revenue_cents": revenue_cents,
-                "sales_count": sales_count,
-                "atv_cents": atv_cents
-            })
+            if date_str not in timeseries_dict:
+                timeseries_dict[date_str] = {
+                    "date": date_str,
+                    "revenue_cents": 0,
+                    "sales_count": 0,
+                    "atv_cents": 0
+                }
+            
+            timeseries_dict[date_str]["revenue_cents"] += revenue_cents
+            timeseries_dict[date_str]["sales_count"] += sales_count
+            # Recalculate ATV after merging
+            if timeseries_dict[date_str]["sales_count"] > 0:
+                timeseries_dict[date_str]["atv_cents"] = int(
+                    timeseries_dict[date_str]["revenue_cents"] / timeseries_dict[date_str]["sales_count"]
+                )
+        
+        # Handle package sales if needed
+        if module is None or module in ["recepcion", "kidibar"]:
+            package_query = select(
+                func.date(Sale.created_at).label("sale_date"),
+                SaleItem.ref_id.label("package_id"),
+                Sale.total_cents.label("total_cents")
+            ).join(
+                Sale, SaleItem.sale_id == Sale.id
+            ).where(
+                and_(
+                    SaleItem.type == "package",
+                    Sale.tipo == "package",
+                    Sale.created_at >= start_datetime,
+                    Sale.created_at <= end_datetime
+                )
+            )
+            
+            if sucursal_uuid:
+                package_query = package_query.where(Sale.sucursal_id == sucursal_uuid)
+            
+            package_result = await db.execute(package_query)
+            package_rows = package_result.all()
+            
+            if package_rows:
+                package_ids = list(set(row.package_id for row in package_rows))
+                packages_query = select(Package).where(Package.id.in_(package_ids))
+                packages_result = await db.execute(packages_query)
+                packages = packages_result.scalars().all()
+                
+                # Filter packages by module and aggregate by date
+                if module == "recepcion":
+                    service_package_ids = set(get_service_package_ids(list(packages)))
+                    for row in package_rows:
+                        if row.package_id in service_package_ids:
+                            sale_date = row.sale_date
+                            date_str = sale_date.isoformat() if isinstance(sale_date, date) else sale_date
+                            revenue = int(row.total_cents or 0)
+                            
+                            if date_str not in timeseries_dict:
+                                timeseries_dict[date_str] = {
+                                    "date": date_str,
+                                    "revenue_cents": 0,
+                                    "sales_count": 0,
+                                    "atv_cents": 0
+                                }
+                            
+                            timeseries_dict[date_str]["revenue_cents"] += revenue
+                            timeseries_dict[date_str]["sales_count"] += 1
+                            if timeseries_dict[date_str]["sales_count"] > 0:
+                                timeseries_dict[date_str]["atv_cents"] = int(
+                                    timeseries_dict[date_str]["revenue_cents"] / timeseries_dict[date_str]["sales_count"]
+                                )
+                elif module == "kidibar":
+                    product_package_ids = set(get_product_package_ids(list(packages)))
+                    for row in package_rows:
+                        if row.package_id in product_package_ids:
+                            sale_date = row.sale_date
+                            date_str = sale_date.isoformat() if isinstance(sale_date, date) else sale_date
+                            revenue = int(row.total_cents or 0)
+                            
+                            if date_str not in timeseries_dict:
+                                timeseries_dict[date_str] = {
+                                    "date": date_str,
+                                    "revenue_cents": 0,
+                                    "sales_count": 0,
+                                    "atv_cents": 0
+                                }
+                            
+                            timeseries_dict[date_str]["revenue_cents"] += revenue
+                            timeseries_dict[date_str]["sales_count"] += 1
+                            if timeseries_dict[date_str]["sales_count"] > 0:
+                                timeseries_dict[date_str]["atv_cents"] = int(
+                                    timeseries_dict[date_str]["revenue_cents"] / timeseries_dict[date_str]["sales_count"]
+                                )
+                else:
+                    # module is None - include all packages
+                    for row in package_rows:
+                        sale_date = row.sale_date
+                        date_str = sale_date.isoformat() if isinstance(sale_date, date) else sale_date
+                        revenue = int(row.total_cents or 0)
+                        
+                        if date_str not in timeseries_dict:
+                            timeseries_dict[date_str] = {
+                                "date": date_str,
+                                "revenue_cents": 0,
+                                "sales_count": 0,
+                                "atv_cents": 0
+                            }
+                        
+                        timeseries_dict[date_str]["revenue_cents"] += revenue
+                        timeseries_dict[date_str]["sales_count"] += 1
+                        if timeseries_dict[date_str]["sales_count"] > 0:
+                            timeseries_dict[date_str]["atv_cents"] = int(
+                                timeseries_dict[date_str]["revenue_cents"] / timeseries_dict[date_str]["sales_count"]
+                            )
+        
+        # Convert dictionary to list
+        timeseries = list(timeseries_dict.values())
         
         # Fill in missing dates with zeros
         current_date = start_date
@@ -487,7 +769,7 @@ class ReportService:
             await self.cache.set(cache_key, report, ttl=300)  # 5 minutes
         
         logger.info(
-            f"Sales timeseries generated: {len(filled_timeseries)} days, "
+            f"Sales timeseries generated: module={module}, {len(filled_timeseries)} days, "
             f"from {start_date.isoformat()} to {end_date.isoformat()}"
         )
         
@@ -2298,6 +2580,7 @@ class ReportService:
         sucursal_id: Optional[str] = None,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
+        module: Optional[str] = None,  # "recepcion", "kidibar", or None for all
         use_cache: bool = True
     ) -> Dict[str, Any]:
         """
@@ -2308,6 +2591,7 @@ class ReportService:
             sucursal_id: Optional sucursal ID to filter by
             start_date: Optional start date
             end_date: Optional end date
+            module: Optional module filter ("recepcion", "kidibar", or None for all)
             use_cache: Whether to use cache (default: True)
             
         Returns:
@@ -2315,12 +2599,13 @@ class ReportService:
         """
         from uuid import UUID
         
-        # Generate cache key
+        # Generate cache key (include module)
         cache_key = self.cache._generate_key(
             "customers_summary",
             sucursal_id,
             start_date.isoformat() if start_date else None,
-            end_date.isoformat() if end_date else None
+            end_date.isoformat() if end_date else None,
+            module
         )
         
         # Check cache
@@ -2465,7 +2750,7 @@ class ReportService:
             await self.cache.set(cache_key, summary, ttl=300)  # 5 minutes
         
         logger.info(
-            f"Customers summary generated: {total_unique_customers} unique customers, "
+            f"Customers summary generated: module={module}, {total_unique_customers} unique customers, "
             f"{total_new_customers} new customers"
         )
         
@@ -4459,6 +4744,7 @@ class ReportService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         comparison_type: str = "previous_period",  # "previous_period", "month_over_month", "year_over_year"
+        module: Optional[str] = None,  # "recepcion", "kidibar", or None for all
         use_cache: bool = True
     ) -> Dict[str, Any]:
         """
@@ -4470,6 +4756,7 @@ class ReportService:
             start_date: Start date of current period
             end_date: End date of current period
             comparison_type: Type of comparison ("previous_period", "month_over_month", "year_over_year")
+            module: Optional module filter ("recepcion", "kidibar", or None for all)
             use_cache: Whether to use cache (default: True)
             
         Returns:
@@ -4504,6 +4791,7 @@ class ReportService:
             sucursal_id=sucursal_id,
             start_date=start_date,
             end_date=end_date,
+            module=module,
             use_cache=use_cache
         )
         
@@ -4534,6 +4822,7 @@ class ReportService:
             sucursal_id=sucursal_id,
             start_date=prev_start,
             end_date=prev_end,
+            module=module,
             use_cache=use_cache
         )
         

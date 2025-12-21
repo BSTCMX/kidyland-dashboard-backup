@@ -50,6 +50,8 @@
   let predictionType: "sales" | "capacity" | "stock" | "all" = "sales";
   let predictionInProgress: boolean = false;
   let predictionError: string | null = null;
+  let showResetButton: boolean = false;
+  let resettingLimit: boolean = false;
   
   // Predictions data
   let predictionsData: SegmentedPredictionsResponse | null = null;

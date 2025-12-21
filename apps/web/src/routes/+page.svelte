@@ -59,7 +59,7 @@
 <div class="login-page">
   <div class="login-container">
     <div class="login-header">
-      <AnimatedTitle text="Kidyland" size="lg" />
+      <AnimatedTitle text="Kidyland" size="md" />
       <p class="login-subtitle">Sistema de gestión</p>
     </div>
 
@@ -169,11 +169,15 @@
     box-shadow: 
       0 8px 32px rgba(0, 0, 0, 0.15),
       0 0 20px var(--glow-primary);
+    overflow: visible;
+    position: relative;
   }
 
   .login-header {
     text-align: center;
     margin-bottom: var(--spacing-2xl);
+    overflow: visible;
+    position: relative;
   }
 
   /* AnimatedTitle component handles its own styling */
