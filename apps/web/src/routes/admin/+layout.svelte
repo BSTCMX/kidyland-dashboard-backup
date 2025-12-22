@@ -14,6 +14,7 @@
   import ThemeToggle from "$lib/components/shared/ThemeToggle.svelte";
   import Logo from "$lib/components/shared/Logo.svelte";
   import { page } from "$app/stores";
+  import { getPageTitle } from "$lib/utils/seo";
 
   // Reactive access checks - computed once and reactive to user changes
   // Uses secure checks that verify token-store consistency
@@ -81,6 +82,10 @@
     { route: "/admin/reports", label: "Reportes", icon: TrendingUp },
   ];
 </script>
+
+<svelte:head>
+  {@html getPageTitle("Administración")}
+</svelte:head>
 
 {#if !$user}
   <div class="loading-container">

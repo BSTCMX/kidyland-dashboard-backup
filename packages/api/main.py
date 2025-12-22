@@ -105,6 +105,13 @@ async def cache_headers(request: Request, call_next):
     """Cache headers middleware - adds optimal cache headers to responses."""
     return await add_cache_headers_middleware(request, call_next)
 
+# Add security headers middleware (after cache headers, before CORS)
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Security headers middleware - adds essential security headers to responses."""
+    from middleware.security_headers import add_security_headers_middleware
+    return await add_security_headers_middleware(request, call_next)
+
 # Configure CORS dynamically based on environment
 # Clean Architecture: Configuration logic in core.config
 # - Development: Allows all origins ["*"] for local development convenience

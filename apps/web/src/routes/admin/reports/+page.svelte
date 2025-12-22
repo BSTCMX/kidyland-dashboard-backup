@@ -27,6 +27,7 @@
   import { fetchSalesTimeSeries, type TimeSeriesDataPoint } from "$lib/stores/reports";
   import type { GroupedDataPoint } from "$lib/utils/charts/chartHelpers";
   import { createDebouncedReactive } from "$lib/utils/debounce";
+  import { getPageSEOTags } from "$lib/utils/seo";
 import CustomersSection from "$lib/components/admin/reports/customers/CustomersSection.svelte";
 import ArqueosSection from "$lib/components/admin/reports/arqueos/ArqueosSection.svelte";
 import InventorySection from "$lib/components/admin/reports/inventory/InventorySection.svelte";
@@ -209,6 +210,13 @@ import ForecastingSection from "$lib/components/admin/reports/forecasting/Foreca
     debouncedLoadTimeSeries();
   }
 </script>
+
+<svelte:head>
+  {@html getPageSEOTags(
+    "Reportes Avanzados",
+    "Reportes detallados de ventas, inventario, servicios, arqueos, clientes y forecasting del sistema Kidyland."
+  )}
+</svelte:head>
 
 <div class="reports-page">
   <div class="reports-header">

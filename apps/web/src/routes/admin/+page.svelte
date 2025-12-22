@@ -19,6 +19,7 @@
   import { periodStore, initializePeriod, selectedDays } from "$lib/stores/period";
   import { sucursalesAdminStore, fetchAllSucursales } from "$lib/stores/sucursales-admin";
   import { writable } from "svelte/store";
+  import { getPageSEOTags } from "$lib/utils/seo";
   import { 
     LayoutDashboard, 
     FileSpreadsheet, 

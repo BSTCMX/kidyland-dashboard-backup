@@ -11,6 +11,7 @@
   import AnimatedTitle from "$lib/components/shared/AnimatedTitle.svelte";
   import { Eye, EyeOff, LogIn } from "lucide-svelte";
   import InstallButton from "$lib/components/pwa/InstallButton.svelte";
+  import { getPageSEOTags } from "$lib/utils/seo";
   import "../app.css";
   import "$lib/styles/animations.css";
   import "$lib/styles/dashboard-theme.css";
@@ -75,6 +76,13 @@
     showPassword = !showPassword;
   }
 </script>
+
+<svelte:head>
+  {@html getPageSEOTags(
+    "Iniciar Sesión",
+    "Accede al sistema de gestión Kidyland. Administra servicios, productos, paquetes y reportes de tu centro de entretenimiento."
+  )}
+</svelte:head>
 
 <div class="login-page">
   <div class="login-container">
