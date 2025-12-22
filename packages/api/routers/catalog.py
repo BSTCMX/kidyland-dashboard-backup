@@ -249,7 +249,7 @@ async def delete_sucursal(
 
 # ========== PRODUCTS ==========
 
-@router.get("/products", response_model=List[ProductRead], dependencies=[Depends(require_role(["super_admin", "admin_viewer", "kidibar"]))])
+@router.get("/products", response_model=List[ProductRead], dependencies=[Depends(require_role(["super_admin", "admin_viewer", "kidibar", "recepcion"]))])
 async def get_products(
     sucursal_id: str = Query(None, description="Optional: Filter by sucursal ID"),
     db: AsyncSession = Depends(get_db)
@@ -263,7 +263,7 @@ async def get_products(
     - Products where sucursal_id matches (backward compatibility)
     - OR products where sucursales_ids JSON array contains the sucursal_id
     
-    Security: super_admin, admin_viewer, and kidibar can view.
+    Security: super_admin, admin_viewer, kidibar, and recepcion can view.
     """
     query = select(Product).where(Product.deleted_at.is_(None))  # Exclude soft-deleted products
     if sucursal_id:
@@ -554,7 +554,7 @@ async def delete_product(
 
 # ========== SERVICES ==========
 
-@router.get("/services", response_model=List[ServiceRead], dependencies=[Depends(require_role(["super_admin", "admin_viewer", "recepcion"]))])
+@router.get("/services", response_model=List[ServiceRead], dependencies=[Depends(require_role(["super_admin", "admin_viewer", "recepcion", "monitor"]))])
 async def get_services(
     sucursal_id: str = Query(None, description="Optional: Filter by sucursal ID"),
     db: AsyncSession = Depends(get_db)
@@ -952,7 +952,7 @@ async def delete_service(
 
 # ========== PACKAGES ==========
 
-@router.get("/packages", response_model=List[PackageRead], dependencies=[Depends(require_role(["super_admin", "admin_viewer", "recepcion", "kidibar"]))])
+@router.get("/packages", response_model=List[PackageRead], dependencies=[Depends(require_role(["super_admin", "admin_viewer", "recepcion", "kidibar", "monitor"]))])
 async def get_packages(
     sucursal_id: str = Query(None, description="Optional: Filter by sucursal ID"),
     db: AsyncSession = Depends(get_db)
@@ -970,6 +970,45 @@ async def get_packages(
         try:
             sucursal_uuid = uuid.UUID(sucursal_id)
             query = query.where(Package.sucursal_id == sucursal_uuid)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid sucursal ID format"
+            )
+    if sucursal_id:
+        try:
+            sucursal_uuid = uuid.UUID(sucursal_id)
+            sucursal_id_str = str(sucursal_uuid)
+            
+            # Hybrid filtering: sucursal_id OR sucursales_ids contains
+            # Using PostgreSQL JSON functions compatible with JSON (not JSONB)
+            # We need to handle NULL and empty arrays safely
+            sucursal_id_condition = text(
+                """
+                EXISTS (
+                    SELECT 1 
+                    FROM json_array_elements_text(
+                        COALESCE(packages.sucursales_ids::text::json, '[]'::json)
+                    ) AS elem 
+                    WHERE trim(both '"' from elem::text) = :sucursal_id_str
+                )
+                """
+            ).bindparams(sucursal_id_str=sucursal_id_str)
+            
+            query = query.where(
+                or_(
+                    # Primary sucursal_id match (backward compatibility)
+                    Package.sucursal_id == sucursal_uuid,
+                    # Check if sucursales_ids array contains the sucursal_id
+                    # Only check if sucursales_ids is not NULL and not empty
+                    and_(
+                        Package.sucursales_ids.isnot(None),
+                        # Check that array is not empty using json_array_length
+                        text("json_array_length(COALESCE(packages.sucursales_ids::text::json, '[]'::json)) > 0"),
+                        sucursal_id_condition
+                    )
+                )
+            )
         except ValueError:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1007,6 +1046,8 @@ async def create_package(
     Create a new package.
     
     Security: Only super_admin can create.
+    
+    If sucursales_ids is provided, use the first one as sucursal_id for backward compatibility.
     """
     # Validate included_items
     # Note: Basic validation (product_id/quantity, service_id/duration_minutes) is automatic via @model_validator
@@ -1028,15 +1069,57 @@ async def create_package(
                         detail=f"Duration {item.duration_minutes} not allowed for service '{service.name}'. Allowed durations: {service.durations_allowed}"
                     )
     
-    package_dict = package_data.model_dump()
+    package_dict = package_data.model_dump(exclude_none=True)
+    
+    # Validate that at least one sucursal is provided
+    if not package_dict.get("sucursales_ids") or len(package_dict.get("sucursales_ids", [])) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="At least one sucursal must be provided in sucursales_ids"
+        )
+    
+    # Handle multiple sucursales: use first one as sucursal_id for backward compatibility
+    sucursales_ids = package_dict["sucursales_ids"]
+    if sucursales_ids and len(sucursales_ids) > 0:
+        # Convert to strings for JSON storage (if not already strings)
+        if not isinstance(sucursales_ids[0], str):
+            package_dict["sucursales_ids"] = [str(uuid_val) for uuid_val in sucursales_ids]
+        else:
+            package_dict["sucursales_ids"] = sucursales_ids
+        
+        # Use first sucursal_id as the primary one for backward compatibility
+        if not package_dict.get("sucursal_id"):
+            # Convert string UUID to UUID object for the foreign key
+            try:
+                package_dict["sucursal_id"] = uuid.UUID(package_dict["sucursales_ids"][0])
+            except (ValueError, TypeError):
+                # If conversion fails, try to use as is
+                package_dict["sucursal_id"] = package_dict["sucursales_ids"][0]
+    elif package_dict.get("sucursal_id"):
+        # If only sucursal_id is provided (backward compatibility), also set it in sucursales_ids
+        sucursal_id = package_dict["sucursal_id"]
+        if isinstance(sucursal_id, str):
+            package_dict["sucursales_ids"] = [sucursal_id]
+        else:
+            package_dict["sucursales_ids"] = [str(sucursal_id)]
+    
     # Serialize UUIDs in included_items to strings for JSON storage
     if package_dict.get("included_items"):
         package_dict["included_items"] = _serialize_package_items(package_dict["included_items"])
-    package = Package(**package_dict)
-    db.add(package)
-    await db.commit()
-    await db.refresh(package)
-    return package
+    
+    try:
+        package = Package(**package_dict)
+        db.add(package)
+        await db.commit()
+        await db.refresh(package)
+        return package
+    except IntegrityError as e:
+        await db.rollback()
+        logger.error(f"IntegrityError creating package: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Error creating package due to database constraint"
+        )
 
 
 @router.put("/packages/{package_id}", response_model=PackageRead, dependencies=[Depends(require_role("super_admin"))])
@@ -1113,6 +1196,31 @@ async def update_package(
         
         # Replace with validated items (convert back to dict for storage)
         update_data["included_items"] = [item.model_dump() for item in validated_items]
+    
+    # Handle multiple sucursales: use first one as sucursal_id for backward compatibility
+    if "sucursales_ids" in update_data and update_data["sucursales_ids"]:
+        # Convert UUIDs (may be strings from frontend) to strings for JSON storage
+        sucursales_ids = update_data["sucursales_ids"]
+        if sucursales_ids and len(sucursales_ids) > 0:
+            # Convert to strings if needed
+            if not isinstance(sucursales_ids[0], str):
+                update_data["sucursales_ids"] = [str(uuid_val) for uuid_val in sucursales_ids]
+            else:
+                update_data["sucursales_ids"] = sucursales_ids
+            
+            # Use first sucursal_id as the primary one for backward compatibility
+            try:
+                update_data["sucursal_id"] = uuid.UUID(update_data["sucursales_ids"][0])
+            except (ValueError, TypeError):
+                # If conversion fails, try to use as is
+                update_data["sucursal_id"] = update_data["sucursales_ids"][0]
+    elif "sucursal_id" in update_data and update_data["sucursal_id"]:
+        # If only sucursal_id is provided (backward compatibility), also set it in sucursales_ids
+        sucursal_id = update_data["sucursal_id"]
+        if isinstance(sucursal_id, str):
+            update_data["sucursales_ids"] = [sucursal_id]
+        else:
+            update_data["sucursales_ids"] = [str(sucursal_id)]
     
     # Serialize UUIDs in included_items to strings for JSON storage
     if "included_items" in update_data:

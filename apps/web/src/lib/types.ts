@@ -15,9 +15,6 @@ export type {
   Sale,
   Timer,
   ServiceAlert,
-  ProductPackage,
-  ServicePackage,
-  MixedPackage,
 } from "@kidyland/shared/types";
 
 // App-specific types

@@ -13,7 +13,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.exceptions import RequestValidationError
@@ -31,7 +31,8 @@ from services.timer_broadcast_service import periodic_timer_broadcast_task
 from services.timer_activation_service import periodic_timer_activation_task
 
 # Import configuration (Clean Architecture: config in core)
-from core.config import settings, get_cors_origins, get_static_files_dir
+from core.config import settings, get_cors_origins, get_static_files_dir, get_cors_headers
+from database import get_db
 
 # Import rate limiting (Clean Architecture: middleware in middleware package)
 from middleware.rate_limit import limiter
@@ -131,11 +132,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail},
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        }
+        headers=get_cors_headers()
     )
 
 
@@ -145,11 +142,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": exc.errors(), "body": exc.body},
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        }
+        headers=get_cors_headers()
     )
 
 
@@ -169,12 +162,9 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
             "detail": f"Rate limit exceeded: {exc.detail}",
             "error": "rate_limit_exceeded"
         },
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
+        headers=get_cors_headers({
             "Retry-After": str(exc.retry_after) if hasattr(exc, "retry_after") else "60",
-        }
+        })
     )
 
 
@@ -215,11 +205,7 @@ async def http_exception_handler_spa(request: Request, exc: StarletteHTTPExcepti
     return JSONResponse(
         status_code=exc.status_code,
         content={"detail": exc.detail},
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        }
+        headers=get_cors_headers()
     )
 
 
@@ -230,11 +216,7 @@ async def general_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "Internal server error. Please try again later."},
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        }
+        headers=get_cors_headers()
     )
 
 # Include routers - only working ones
@@ -253,9 +235,40 @@ app.include_router(ws_timers.router)
 
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy", "service": "kidyland-api"}
+async def health_check(db = Depends(get_db)):
+    """
+    Health check endpoint with database connectivity verification.
+    
+    Returns:
+        - 200: All systems healthy (API + DB)
+        - 503: Service unhealthy (DB connection failed)
+    """
+    from sqlalchemy import text
+    
+    try:
+        # Simple query to verify database connectivity
+        # Using text() with no parameters is safe here (static query)
+        result = await db.execute(text("SELECT 1"))
+        result.scalar_one()
+        
+        return {
+            "status": "healthy",
+            "service": "kidyland-api",
+            "database": "connected"
+        }
+    except Exception as e:
+        logger.error(f"Health check failed - database connection error: {e}", exc_info=True)
+        # Return JSONResponse for error case to set proper status code
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "unhealthy",
+                "service": "kidyland-api",
+                "database": "disconnected",
+                "error": "Database connection failed"
+            },
+            headers=get_cors_headers()
+        )
 
 
 # Mount static files AFTER all API routes

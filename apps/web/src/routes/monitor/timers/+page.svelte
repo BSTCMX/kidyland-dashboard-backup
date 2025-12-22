@@ -18,8 +18,10 @@
 
   onMount(() => {
     // Verify user has access to monitor
+    // Note: This page is now accessed via /recepcion/timers, but we keep this
+    // for backward compatibility in case someone accesses /monitor/timers directly
     if (!$user || !hasAccessSecure("/monitor")) {
-      goto("/monitor");
+      goto("/recepcion");
       return;
     }
 

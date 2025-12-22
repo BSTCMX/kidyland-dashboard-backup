@@ -7,8 +7,10 @@
    * - Timers Activos (Active Timers)
    * - Historial de Ventas (Sales History)
    */
+  import { page } from "$app/stores";
   import { user, hasAccess } from "$lib/stores/auth";
   import { getModulePermissions } from "$lib/utils/permissions";
+  import { preserveQueryParams } from "$lib/utils/navigation";
   import { 
     Receipt, 
     Clock, 
@@ -53,7 +55,7 @@
     {/if}
 
     {#if recepcionPerms?.canAccess}
-      <a href="/recepcion/ventas" class="service-card">
+      <a href={preserveQueryParams("/recepcion/ventas", $page.url)} class="service-card">
         <div class="card-icon">
           <FileText size={32} strokeWidth={1.5} />
         </div>

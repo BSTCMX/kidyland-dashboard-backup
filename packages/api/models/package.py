@@ -25,6 +25,11 @@ class Package(Base):
         nullable=False,
         index=True
     )
+    sucursales_ids = Column(
+        JSON,
+        nullable=True,
+        default=list
+    )  # List of UUIDs for multiple sucursales support
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
     price_cents = Column(Integer, nullable=False)

@@ -72,18 +72,22 @@ import { goto } from "$app/navigation";
   }
 
   function handlePanelClick(route: string) {
-    // Redirect monitor to recepcion (for super_admin compatibility)
-    // This ensures super_admin sees the same recepcion layout with monitor branding
-    // when accessing what was previously the monitor panel
+    // For super_admin accessing /monitor, add query param to indicate monitor context
+    // This allows recepcion layout to show "Monitor" branding
     let targetRoute = route;
-    if (route === "/monitor" && hasRole("super_admin")) {
-      targetRoute = "/recepcion";
+    let queryParams = new URLSearchParams();
+    
+    if (selectedSucursalId) {
+      queryParams.set("sucursal_id", selectedSucursalId);
     }
     
-    // Append sucursal_id as query param if selected
-    const url = selectedSucursalId 
-      ? `${targetRoute}?sucursal_id=${selectedSucursalId}`
-      : targetRoute;
+    // If super_admin accesses /monitor, add view_as=monitor to preserve branding
+    if (route === "/monitor" && hasRole("super_admin")) {
+      queryParams.set("view_as", "monitor");
+    }
+    
+    const queryString = queryParams.toString();
+    const url = queryString ? `${targetRoute}?${queryString}` : targetRoute;
     
     goto(url);
   }

@@ -8,6 +8,7 @@ Role Hierarchy:
 - kidibar: Only products and product sales
 - monitor: Only view active timers, zero input
 """
+import logging
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Union, List
@@ -17,6 +18,7 @@ from database import get_db
 from models.user import User
 from core.security import verify_token
 
+logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 
@@ -120,14 +122,21 @@ def require_role(required_roles: Union[str, List[str]]):
                 detail="User not found"
             )
         
-        if db_user.role not in allowed_roles:
+        # Normalize role comparison: use .value for enum to string conversion
+        user_role_value = db_user.role.value if hasattr(db_user.role, 'value') else str(db_user.role)
+        
+        if user_role_value not in allowed_roles:
             roles_str = ", ".join(allowed_roles)
-            # Convert enum to string value for proper serialization
-            user_role_str = db_user.role.value if hasattr(db_user.role, 'value') else str(db_user.role)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access denied. Required role(s): {roles_str}. Your role: {user_role_str}"
+                detail=f"Access denied. Required role(s): {roles_str}. Your role: {user_role_value}"
             )
+        
+        # Log successful role check for debugging (temporary)
+        logger.debug(
+            f"Role check passed: user_id={db_user.id}, username={db_user.username}, "
+            f"role={user_role_value}, allowed_roles={allowed_roles}"
+        )
         
         return db_user
     

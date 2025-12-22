@@ -5,14 +5,14 @@
    * Shows unified history of product and package sales.
    */
   import { onMount } from "svelte";
-  import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { user, hasAccessSecure } from "$lib/stores/auth";
+  import { gotoWithQueryParams } from "$lib/utils/navigation";
   import SalesHistory from "$lib/components/shared/SalesHistory.svelte";
 
   onMount(() => {
     if (!$user || !hasAccessSecure("/kidibar")) {
-      goto("/kidibar");
+      gotoWithQueryParams("/kidibar", $page.url);
     }
   });
 
@@ -23,7 +23,7 @@
 
 <div class="ventas-page">
   <div class="page-header">
-    <button class="back-button" on:click={() => goto("/kidibar")}>← Volver</button>
+    <button class="back-button" on:click={() => gotoWithQueryParams("/kidibar", $page.url)}>← Volver</button>
     <h1 class="page-title">Historial de Ventas</h1>
   </div>
 

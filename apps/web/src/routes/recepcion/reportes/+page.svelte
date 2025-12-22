@@ -4,8 +4,10 @@
    * 
    * Provides access to day close operations and arqueos history.
    */
+  import { page } from "$app/stores";
   import { user, hasAccess } from "$lib/stores/auth";
   import { getModulePermissions } from "$lib/utils/permissions";
+  import { preserveQueryParams } from "$lib/utils/navigation";
   import { 
     Moon, 
     FileText 
@@ -38,7 +40,7 @@
     {/if}
 
     {#if recepcionPerms?.canAccess}
-      <a href="/recepcion/arqueos" class="report-card">
+      <a href={preserveQueryParams("/recepcion/arqueos", $page.url)} class="report-card">
         <div class="card-icon">
           <FileText size={32} strokeWidth={1.5} />
         </div>

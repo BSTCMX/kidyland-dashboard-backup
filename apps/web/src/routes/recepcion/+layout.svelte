@@ -14,6 +14,7 @@
   import { page } from "$app/stores";
   import { ROLE_ROUTES } from "$lib/types";
   import type { UserRole } from "$lib/types";
+  import { getNavLink } from "$lib/utils/navigation";
 
   // Reactive access check - computed once and reactive to user changes
   // Uses secure checks that verify token-store consistency
@@ -64,8 +65,17 @@
     LogOut
   } from "lucide-svelte";
   
-  // Dynamic sidebar title based on role
-  $: sidebarTitle = $user?.role === "monitor" ? "Monitor" : "Recepción";
+  // Dynamic sidebar title based on role or context
+  // Show "Monitor" if:
+  // 1. User role is "monitor", OR
+  // 2. super_admin is viewing from /monitor route (detected via view_as query param or path)
+  $: isMonitorContext = 
+    $user?.role === "monitor" || 
+    ($user?.role === "super_admin" && (
+      $page.url.pathname.startsWith("/monitor") || 
+      $page.url.searchParams.get("view_as") === "monitor"
+    ));
+  $: sidebarTitle = isMonitorContext ? "Monitor" : "Recepción";
   
   // Roles that have a main panel defined in ROLE_ROUTES
   // These roles can access other panels and need a button to return to their main panel
@@ -145,7 +155,7 @@
       <nav class="sidebar-nav">
         {#each receptionNavItems as item}
           <a
-            href={item.route}
+            href={getNavLink(item.route, $page.url)}
             class="nav-link"
             class:active={currentPath === item.route || (item.route !== "/recepcion" && currentPath.startsWith(item.route))}
             on:click={closeSidebar}

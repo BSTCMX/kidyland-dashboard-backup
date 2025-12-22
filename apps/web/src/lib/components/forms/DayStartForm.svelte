@@ -10,6 +10,7 @@
   import { createEventDispatcher } from "svelte";
 
   export let sucursalId: string = "";
+  export let readOnly: boolean = false;
 
   const dispatch = createEventDispatcher();
 
@@ -149,6 +150,7 @@
             bind:value={initialCashInput}
             placeholder="0.00"
             required
+            disabled={readOnly}
           />
         </div>
 
@@ -160,16 +162,23 @@
           <div class="error-banner">{error}</div>
         {/if}
 
-        <div class="form-actions">
-          <button
-            type="button"
-            class="btn btn-primary"
-            on:click={handleSubmit}
-            disabled={!canSubmit || loading}
-          >
-            {loading ? "Iniciando..." : "Iniciar Día"}
-          </button>
-        </div>
+        {#if readOnly}
+          <div class="read-only-banner">
+            <p>⚠️ Solo lectura: No tienes permisos para iniciar el día.</p>
+            <p class="info-text">Puedes ver la información del día actual, pero no puedes ejecutar acciones.</p>
+          </div>
+        {:else}
+          <div class="form-actions">
+            <button
+              type="button"
+              class="btn btn-primary"
+              on:click={handleSubmit}
+              disabled={!canSubmit || loading}
+            >
+              {loading ? "Iniciando..." : "Iniciar Día"}
+            </button>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}
@@ -282,6 +291,15 @@
   .info-text {
     margin-top: var(--spacing-sm);
     font-size: var(--text-sm);
+  }
+
+  .read-only-banner {
+    padding: var(--spacing-md);
+    background: rgba(255, 206, 0, 0.1);
+    border: 1px solid var(--accent-warning);
+    border-radius: var(--radius-md);
+    color: var(--accent-warning);
+    margin-top: var(--spacing-lg);
   }
 
   .form-actions {

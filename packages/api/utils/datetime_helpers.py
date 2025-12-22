@@ -164,3 +164,57 @@ def get_business_date_in_timezone(
     # Return just the date portion
     return local_datetime.date()
 
+
+def create_local_midnight_datetime(
+    date_obj: date,
+    timezone_str: str
+) -> datetime:
+    """
+    Create a timezone-aware datetime at midnight in a specific timezone, then convert to UTC.
+    
+    This function is useful for storing "date-only" fields (like scheduled_date) that need
+    to be interpreted in a specific timezone context (e.g., sucursal timezone).
+    
+    The function:
+    1. Creates a datetime at midnight (00:00:00) in the specified timezone
+    2. Converts it to UTC for storage
+    3. Returns the UTC datetime (timezone-aware)
+    
+    This ensures that when the date is later converted back to the local timezone for display,
+    it will show the correct date without day shifts due to timezone conversion.
+    
+    Args:
+        date_obj: Date object (date-only, no time component)
+        timezone_str: IANA timezone string (e.g., "America/Mexico_City")
+        
+    Returns:
+        Timezone-aware datetime in UTC representing midnight in the specified timezone
+        
+    Raises:
+        ValueError: If timezone_str is invalid
+        
+    Example:
+        >>> from datetime import date
+        >>> scheduled_date = date(2025, 12, 21)
+        >>> # Create datetime at midnight in Mexico City timezone, then convert to UTC
+        >>> utc_datetime = create_local_midnight_datetime(scheduled_date, "America/Mexico_City")
+        >>> # When converted back to Mexico City timezone, it will show 2025-12-21 00:00:00
+        >>> # This avoids day shifts when displaying the date
+    """
+    try:
+        target_timezone = ZoneInfo(timezone_str)
+    except Exception as e:
+        raise ValueError(f"Invalid timezone string: {timezone_str}") from e
+    
+    from datetime import time, timezone
+    
+    # Create datetime at midnight in the target timezone
+    local_midnight = datetime.combine(date_obj, time.min)
+    # Make it timezone-aware
+    local_midnight = local_midnight.replace(tzinfo=target_timezone)
+    
+    # Convert to UTC for storage
+    utc_datetime = local_midnight.astimezone(timezone.utc)
+    
+    return utc_datetime
+

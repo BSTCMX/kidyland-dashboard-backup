@@ -17,6 +17,7 @@
   import PeriodSelector from "$lib/components/admin/PeriodSelector.svelte";
   import { metricsStore, formattedRevenue, formattedATV, timeSinceLastRefresh, refreshMetrics, fetchTopCustomersByModule } from "$lib/stores/metrics";
   import { periodStore, initializePeriod, selectedDays } from "$lib/stores/period";
+  import { sucursalesAdminStore, fetchAllSucursales } from "$lib/stores/sucursales-admin";
   import { writable } from "svelte/store";
   import { 
     LayoutDashboard, 
@@ -48,7 +49,22 @@
     // This prevents automatic concurrent calls
   }
 
+  // Create mapping from sucursal_id to sucursal_name for display
+  $: sucursalNameMap = new Map(
+    $sucursalesAdminStore.list.map(s => [s.id, s.name])
+  );
+
+  // Helper function to get sucursal name from ID
+  function getSucursalName(sucursalId: string): string {
+    return sucursalNameMap.get(sucursalId) || `Sucursal ${sucursalId.slice(0, 8)}`;
+  }
+
   onMount(() => {
+    // Load sucursales for name mapping
+    if (canEditSecure("admin")) {
+      fetchAllSucursales();
+    }
+    
     // Early return: verify user has access and can edit admin BEFORE executing any logic
     // Uses secure checks that verify token-store consistency
     if (!$user || !hasAccessSecure("/admin") || !canEditSecure("admin")) {
@@ -99,7 +115,7 @@
           useWizard={true}
         />
       </div>
-      <RefreshButton />
+      <RefreshButton {selectedSucursalId} />
     </div>
   </div>
 
@@ -227,9 +243,9 @@
           <div class="metric-row">
             <span class="metric-label">Por Sucursal:</span>
             <div class="metric-detail">
-              {#each Object.entries($metricsStore.services.services_by_sucursal) as [sucursal, count]}
+              {#each Object.entries($metricsStore.services.services_by_sucursal) as [sucursalId, count]}
                 <div class="metric-item">
-                  Sucursal {sucursal.slice(0, 8)}: {count}
+                  {getSucursalName(sucursalId)}: {count}
                 </div>
               {/each}
             </div>

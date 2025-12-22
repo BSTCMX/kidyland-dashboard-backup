@@ -25,7 +25,7 @@ from models.sucursal import Sucursal
 from models.timer_history import TimerHistory
 from schemas.sale import SaleCreate
 from models.user import User, UserRole
-from utils.datetime_helpers import format_datetime_local, format_time_local
+from utils.datetime_helpers import format_datetime_local, format_time_local, create_local_midnight_datetime
 from services.timer_alert_service import TimerAlertService
 from services.day_start_service import DayStartService
 from services.stock_service import StockService
@@ -196,9 +196,36 @@ class SaleService:
         
         # Add scheduled_date if provided (for package sales)
         if sale_data.scheduled_date:
-            # Convert date to datetime at midnight UTC for storage
-            scheduled_datetime = datetime.combine(sale_data.scheduled_date, datetime.min.time())
-            sale_dict["scheduled_date"] = scheduled_datetime
+            # Get sucursal timezone for proper date handling
+            sucursal_result = await db.execute(
+                select(Sucursal).where(Sucursal.id == sucursal_id)
+            )
+            sucursal = sucursal_result.scalar_one_or_none()
+            timezone_str = sucursal.timezone if sucursal else "America/Mexico_City"
+            
+            logger.info(
+                f"[SCHEDULED_DATE] Creating sale with scheduled_date: "
+                f"input_date={sale_data.scheduled_date}, "
+                f"sucursal_id={sucursal_id}, "
+                f"sucursal_timezone={timezone_str}"
+            )
+            
+            # Create datetime at midnight in sucursal timezone, then convert to UTC for storage
+            # This ensures the date is interpreted correctly in the sucursal's timezone context
+            scheduled_datetime_utc = create_local_midnight_datetime(sale_data.scheduled_date, timezone_str)
+            logger.info(
+                f"[SCHEDULED_DATE] Created UTC datetime: {scheduled_datetime_utc} "
+                f"(represents {sale_data.scheduled_date} at midnight in {timezone_str})"
+            )
+            # Convert to naive datetime for storage (PostgreSQL column is timezone=False)
+            # We store the UTC datetime but without timezone info, since the column doesn't support it
+            # When we retrieve it, we'll treat it as UTC
+            scheduled_datetime_naive = scheduled_datetime_utc.replace(tzinfo=None)
+            logger.info(
+                f"[SCHEDULED_DATE] Stored as naive datetime: {scheduled_datetime_naive} "
+                f"(will be interpreted as UTC when retrieved)"
+            )
+            sale_dict["scheduled_date"] = scheduled_datetime_naive
         
         sale = Sale(**sale_dict)
         db.add(sale)
@@ -490,25 +517,34 @@ class SaleService:
         def format_scheduled_date(scheduled_date_obj, tz_str: str) -> str:
             """
             Format scheduled_date for ticket display.
-            Handles both date and datetime objects.
-            Returns formatted date string (DD/MM/YYYY).
+            
+            The scheduled_date is stored as UTC datetime representing midnight in the sucursal's timezone.
+            This function converts it back to the sucursal's timezone and extracts only the date portion
+            to avoid day shifts due to timezone conversion.
+            
+            Args:
+                scheduled_date_obj: UTC datetime (timezone-aware) or date object
+                tz_str: IANA timezone string (sucursal timezone)
+                
+            Returns:
+                Formatted date string (DD/MM/YYYY) in the sucursal's timezone
             """
             if not scheduled_date_obj:
                 return ""
             
             try:
-                # Import date and time for type checking
-                from datetime import date as dt_date, time as dt_time
+                from datetime import date as dt_date
                 
-                # If it's a date object (not datetime), convert to datetime at midnight UTC
+                # If it's a date object, it means it wasn't properly converted (edge case)
+                # Convert it using the timezone context
                 if isinstance(scheduled_date_obj, dt_date) and not isinstance(scheduled_date_obj, datetime):
-                    scheduled_datetime = datetime.combine(scheduled_date_obj, dt_time.min)
-                    # Make it timezone-aware (UTC)
-                    scheduled_datetime = scheduled_datetime.replace(tzinfo=timezone.utc)
+                    # This shouldn't happen if create_local_midnight_datetime was used,
+                    # but handle it gracefully
+                    scheduled_datetime = create_local_midnight_datetime(scheduled_date_obj, tz_str)
                 elif isinstance(scheduled_date_obj, datetime):
-                    # It's already a datetime object
+                    # It's already a datetime object (should be UTC timezone-aware)
                     scheduled_datetime = scheduled_date_obj
-                    # Make it timezone-aware if it's not
+                    # Ensure it's timezone-aware (assume UTC if naive)
                     if scheduled_datetime.tzinfo is None:
                         scheduled_datetime = scheduled_datetime.replace(tzinfo=timezone.utc)
                 else:
@@ -516,11 +552,12 @@ class SaleService:
                     logger.warning(f"Unexpected scheduled_date type: {type(scheduled_date_obj)}")
                     return str(scheduled_date_obj)
                 
-                # Format using format_datetime_local (only date part)
+                # Convert from UTC to sucursal timezone and extract date only
+                # This ensures the date displayed matches the date selected by the user
                 date_str, _ = format_datetime_local(scheduled_datetime, tz_str, date_format="%d/%m/%Y")
                 return date_str
             except (AttributeError, TypeError, ValueError) as e:
-                logger.warning(f"Error formatting scheduled_date: {e}")
+                logger.warning(f"Error formatting scheduled_date: {e}", exc_info=True)
                 # Fallback: try to format as string
                 return str(scheduled_date_obj)
         
@@ -1230,25 +1267,34 @@ class SaleService:
         def format_scheduled_date(scheduled_date_obj, tz_str: str) -> str:
             """
             Format scheduled_date for ticket display.
-            Handles both date and datetime objects.
-            Returns formatted date string (DD/MM/YYYY).
+            
+            The scheduled_date is stored as UTC datetime representing midnight in the sucursal's timezone.
+            This function converts it back to the sucursal's timezone and extracts only the date portion
+            to avoid day shifts due to timezone conversion.
+            
+            Args:
+                scheduled_date_obj: UTC datetime (timezone-aware) or date object
+                tz_str: IANA timezone string (sucursal timezone)
+                
+            Returns:
+                Formatted date string (DD/MM/YYYY) in the sucursal's timezone
             """
             if not scheduled_date_obj:
                 return ""
             
             try:
-                # Import date and time for type checking
-                from datetime import date as dt_date, time as dt_time
+                from datetime import date as dt_date
                 
-                # If it's a date object (not datetime), convert to datetime at midnight UTC
+                # If it's a date object, it means it wasn't properly converted (edge case)
+                # Convert it using the timezone context
                 if isinstance(scheduled_date_obj, dt_date) and not isinstance(scheduled_date_obj, datetime):
-                    scheduled_datetime = datetime.combine(scheduled_date_obj, dt_time.min)
-                    # Make it timezone-aware (UTC)
-                    scheduled_datetime = scheduled_datetime.replace(tzinfo=timezone.utc)
+                    # This shouldn't happen if create_local_midnight_datetime was used,
+                    # but handle it gracefully
+                    scheduled_datetime = create_local_midnight_datetime(scheduled_date_obj, tz_str)
                 elif isinstance(scheduled_date_obj, datetime):
-                    # It's already a datetime object
+                    # It's already a datetime object (should be UTC timezone-aware)
                     scheduled_datetime = scheduled_date_obj
-                    # Make it timezone-aware if it's not
+                    # Ensure it's timezone-aware (assume UTC if naive)
                     if scheduled_datetime.tzinfo is None:
                         scheduled_datetime = scheduled_datetime.replace(tzinfo=timezone.utc)
                 else:
@@ -1256,11 +1302,12 @@ class SaleService:
                     logger.warning(f"Unexpected scheduled_date type: {type(scheduled_date_obj)}")
                     return str(scheduled_date_obj)
                 
-                # Format using format_datetime_local (only date part)
+                # Convert from UTC to sucursal timezone and extract date only
+                # This ensures the date displayed matches the date selected by the user
                 date_str, _ = format_datetime_local(scheduled_datetime, tz_str, date_format="%d/%m/%Y")
                 return date_str
             except (AttributeError, TypeError, ValueError) as e:
-                logger.warning(f"Error formatting scheduled_date: {e}")
+                logger.warning(f"Error formatting scheduled_date: {e}", exc_info=True)
                 # Fallback: try to format as string
                 return str(scheduled_date_obj)
         

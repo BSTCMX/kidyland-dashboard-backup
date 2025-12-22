@@ -12,7 +12,7 @@
     setPageSize,
     setPage,
   } from "$lib/stores/day-close-history";
-  import { user } from "$lib/stores/auth";
+  import { user, hasRole } from "$lib/stores/auth";
   import LoadingSpinner from "../admin/LoadingSpinner.svelte";
   import ErrorBanner from "../admin/ErrorBanner.svelte";
   import { FileText, RefreshCw, Eye } from "lucide-svelte";
@@ -27,14 +27,21 @@
   let showDetails = false;
 
   $: currentUser = $user;
+  $: isSuperAdmin = hasRole("super_admin");
+  // Use prop sucursalId if provided, otherwise use current user's sucursal_id
+  // For super_admin, targetSucursalId can be empty string (backend will return all day closes)
   $: targetSucursalId = sucursalId || currentUser?.sucursal_id || "";
 
   onMount(() => {
-    if (targetSucursalId) {
+    // Allow fetch if:
+    // 1. targetSucursalId is provided (normal users or super_admin with selected sucursal)
+    // 2. User is super_admin and targetSucursalId is empty (backend will return all day closes)
+    if (targetSucursalId || isSuperAdmin) {
       // Initial load
       const currentSkip = ($dayCloseHistoryStore.pagination.page - 1) * $dayCloseHistoryStore.pagination.pageSize;
+      // targetSucursalId can be empty string for super_admin (backend handles it)
       fetchDayCloseHistory(
-        targetSucursalId,
+        targetSucursalId || undefined, // Convert empty string to undefined for backend
         undefined,
         undefined,
         currentSkip,
@@ -83,12 +90,16 @@
   }
 
   async function handleFilterChange() {
-    if (targetSucursalId) {
+    // Allow filter change if:
+    // 1. targetSucursalId is provided (normal users or super_admin with selected sucursal)
+    // 2. User is super_admin and targetSucursalId is empty (backend will return all day closes)
+    if (targetSucursalId || isSuperAdmin) {
       // Reset to page 1 when filtering
       setPage(1);
       const currentSkip = 0; // Page 1 = skip 0
+      // targetSucursalId can be empty string for super_admin (backend handles it)
       await fetchDayCloseHistory(
-        targetSucursalId,
+        targetSucursalId || undefined, // Convert empty string to undefined for backend
         startDateFilter || undefined,
         endDateFilter || undefined,
         currentSkip,

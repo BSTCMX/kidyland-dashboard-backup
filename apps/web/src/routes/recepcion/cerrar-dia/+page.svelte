@@ -6,7 +6,10 @@
   import { goto } from "$app/navigation";
   import { user, hasAccessSecure } from "$lib/stores/auth";
   import { fetchDayStatus, dayOperationsStore } from "$lib/stores/day-operations";
+  import { canExecuteDayOperations } from "$lib/utils/permissions";
   import DayCloseForm from "$lib/components/forms/DayCloseForm.svelte";
+
+  $: canExecute = canExecuteDayOperations($user?.role);
 
   onMount(() => {
     // Verify user has access to recepcion
@@ -39,6 +42,7 @@
 
   <DayCloseForm
     sucursalId={$user?.sucursal_id || ""}
+    readOnly={!canExecute}
     on:success={handleSuccess}
   />
 </div>

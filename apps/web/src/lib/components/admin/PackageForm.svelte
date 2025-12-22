@@ -29,7 +29,7 @@
   // Form state
   let formData: PackageCreate = {
     name: "",
-    sucursal_id: sucursalId,
+    sucursales_ids: sucursalId ? [sucursalId] : [],
     description: "",
     price_cents: 0,
     included_items: [],
@@ -130,14 +130,14 @@
         // Edit mode: initialize from package
         formData = {
           name: package_.name,
-          sucursal_id: package_.sucursal_id,
+          sucursales_ids: package_.sucursales_ids || (package_.sucursal_id ? [package_.sucursal_id] : []),
           description: package_.description || "",
           price_cents: package_.price_cents,
           included_items: package_.included_items || [],
           active: package_.active !== false,
         };
         priceInput = (package_.price_cents / 100).toFixed(2);
-        selectedSucursal = package_.sucursal_id ? [package_.sucursal_id] : [];
+        selectedSucursal = package_.sucursales_ids || (package_.sucursal_id ? [package_.sucursal_id] : []);
         itemsList = (package_.included_items || []).map((item) => {
           const product = $productsAdminStore.list.find((p) => p.id === item.product_id);
           const service = $servicesAdminStore.list.find((s) => s.id === item.service_id);
@@ -183,7 +183,7 @@
         // Create mode: initialize empty form
         formData = {
           name: "",
-          sucursal_id: sucursalId || "",
+          sucursales_ids: sucursalId ? [sucursalId] : [],
           description: "",
           price_cents: 0,
           included_items: [],
@@ -211,8 +211,8 @@
     }
   }
 
-  // Sync selectedSucursal to formData.sucursal_id (take first selected)
-  $: formData.sucursal_id = selectedSucursal.length > 0 ? selectedSucursal[0] : "";
+  // Sync selectedSucursal to formData.sucursales_ids
+  $: formData.sucursales_ids = selectedSucursal;
 
   $: availableProducts = $productsAdminStore.list.filter((p) => p.active !== false);
   $: availableServices = $servicesAdminStore.list.filter((s) => s.active !== false);
@@ -267,13 +267,9 @@
     return `${hours}h ${mins}min`;
   }
 
-  // Handle sucursal selection
+  // Handle sucursal selection (now supports multiple sucursales)
   function handleSucursalChange(selected: (string | number)[]) {
     selectedSucursal = selected.map((v) => String(v));
-    // Only keep first selection (Package model only supports single sucursal_id)
-    if (selectedSucursal.length > 1) {
-      selectedSucursal = [selectedSucursal[0]];
-    }
   }
 
   function validateForm(): boolean {
@@ -283,8 +279,8 @@
       errors.name = "Nombre es requerido";
     }
 
-    if (!formData.sucursal_id) {
-      errors.sucursal_id = "Sucursal es requerida";
+    if (!formData.sucursales_ids || formData.sucursales_ids.length === 0) {
+      errors.sucursal_id = "Al menos una sucursal es requerida";
     }
 
     if (formData.price_cents <= 0) {

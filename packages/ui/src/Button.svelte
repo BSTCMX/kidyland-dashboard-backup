@@ -1,6 +1,9 @@
 <script lang="ts">
   /**
    * Button component with customizable styles.
+   * 
+   * Clean Architecture: Ensures form submit events work correctly.
+   * The type prop has explicit priority over $$restProps to prevent conflicts.
    */
   export let type: "button" | "submit" | "reset" = "button";
   export let variant: "primary" | "secondary" | "danger" | "brutalist" | "brutalist-danger" = "primary";
@@ -25,6 +28,7 @@
   disabled={disabled}
   class="{isBrutalist ? variantClasses[variant] : 'px-4 py-2 rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ' + variantClasses[variant]} {className}"
   on:click
+  on:submit
 >
   <slot />
 </button>

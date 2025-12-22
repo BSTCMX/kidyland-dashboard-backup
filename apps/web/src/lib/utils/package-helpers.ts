@@ -18,12 +18,20 @@ import type { Package, PackageItem, Product } from "@kidyland/shared/types";
 export function inferPackageType(
   items: PackageItem[] | null | undefined
 ): "product" | "service" | "mixed" {
-  if (!items || items.length === 0) {
+  // Ensure items is an array
+  if (!items) {
+    return "mixed"; // Default for null/undefined
+  }
+  
+  // Handle case where items might not be an array
+  const itemsArray = Array.isArray(items) ? items : [];
+  
+  if (itemsArray.length === 0) {
     return "mixed"; // Default for empty packages
   }
 
-  const hasProducts = items.some((item) => item.product_id);
-  const hasServices = items.some((item) => item.service_id);
+  const hasProducts = itemsArray.some((item) => item.product_id);
+  const hasServices = itemsArray.some((item) => item.service_id);
 
   if (hasProducts && hasServices) {
     return "mixed";

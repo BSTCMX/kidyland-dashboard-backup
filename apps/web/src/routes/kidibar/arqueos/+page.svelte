@@ -4,15 +4,15 @@
    * Reuses DayCloseHistory component from recepcion.
    */
   import { onMount } from "svelte";
-  import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { user, hasAccessSecure } from "$lib/stores/auth";
+  import { gotoWithQueryParams } from "$lib/utils/navigation";
   import DayCloseHistory from "$lib/components/shared/DayCloseHistory.svelte";
 
   onMount(() => {
     // Verify user has access to kidibar
     if (!$user || !hasAccessSecure("/kidibar")) {
-      goto("/kidibar");
+      gotoWithQueryParams("/kidibar", $page.url);
       return;
     }
   });
@@ -24,7 +24,7 @@
 
 <div class="arqueos-page">
   <div class="page-header">
-    <button class="back-button" on:click={() => goto("/kidibar/reportes")}>← Volver</button>
+    <button class="back-button" on:click={() => gotoWithQueryParams("/kidibar/reportes", $page.url)}>← Volver</button>
     <h1 class="page-title">Historial de Arqueos</h1>
   </div>
 

@@ -14,6 +14,8 @@
   import { RefreshCw } from "lucide-svelte";
 
   export let sucursalId: string = "";
+  export let readOnly: boolean = false;
+  export let module: "kidibar" | "recepcion" | undefined = undefined;
 
   const dispatch = createEventDispatcher();
 
@@ -73,7 +75,7 @@
     loadingPreview = true;
     error = null;
     try {
-      preview = await previewDayClose(sucursalId);
+      preview = await previewDayClose(sucursalId, module);
     } catch (e: any) {
       error = e.message || "Error al cargar el preview del cierre";
     } finally {
@@ -279,7 +281,7 @@
                       loadPreview(targetSucursalId);
                     }
                   }}
-                  disabled={loadingPreview}
+                  disabled={loadingPreview || readOnly}
                 >
                   <RefreshCw size={16} strokeWidth={1.5} />
                   {#if loadingPreview}
@@ -321,6 +323,7 @@
             bind:value={physicalCashInput}
             placeholder="0.00"
             required
+            disabled={readOnly}
           />
         </div>
 
@@ -352,6 +355,7 @@
             bind:value={notesInput}
             placeholder="Observaciones, notas o comentarios sobre el cierre de día..."
             rows="4"
+            disabled={readOnly}
           ></textarea>
         </div>
 
@@ -363,16 +367,23 @@
           <div class="error-banner">{error}</div>
         {/if}
 
-        <div class="step-actions">
-          <button 
-            type="button"
-            class="btn btn-primary" 
-            on:click={handleSubmit}
-            disabled={!canSubmit || loading}
-          >
-            {loading ? "Cerrando..." : "Cerrar Día"}
-          </button>
-        </div>
+        {#if readOnly}
+          <div class="read-only-banner">
+            <p>⚠️ Solo lectura: No tienes permisos para cerrar el día.</p>
+            <p class="info-text">Puedes ver la información del día actual, pero no puedes ejecutar acciones.</p>
+          </div>
+        {:else}
+          <div class="step-actions">
+            <button 
+              type="button"
+              class="btn btn-primary" 
+              on:click={handleSubmit}
+              disabled={!canSubmit || loading}
+            >
+              {loading ? "Cerrando..." : "Cerrar Día"}
+            </button>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}
@@ -497,6 +508,15 @@
   .info-text {
     margin-top: var(--spacing-sm);
     font-size: var(--text-sm);
+  }
+
+  .read-only-banner {
+    padding: var(--spacing-md);
+    background: rgba(255, 206, 0, 0.1);
+    border: 1px solid var(--accent-warning);
+    border-radius: var(--radius-md);
+    color: var(--accent-warning);
+    margin-top: var(--spacing-lg);
   }
 
   .step-actions {

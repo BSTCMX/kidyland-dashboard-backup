@@ -2269,7 +2269,7 @@ async def get_customers_trends(
 # MODULE-SPECIFIC STATS ENDPOINTS (for kidibar and recepcion panels)
 # ============================================================================
 
-@router.get("/kidibar", dependencies=[Depends(require_role(["kidibar", "super_admin", "admin_viewer"]))])
+@router.get("/kidibar", dependencies=[Depends(require_role(["kidibar", "recepcion", "super_admin", "admin_viewer", "monitor"]))])
 async def get_kidibar_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -2286,7 +2286,7 @@ async def get_kidibar_stats(
     - Low stock alerts count
     - Peak hours for product sales
     
-    Security: kidibar, super_admin, and admin_viewer can view.
+    Security: kidibar, recepcion, super_admin, and admin_viewer can view.
     Users with sucursal_id are automatically filtered to their sucursal.
     """
     report_service = ReportService()
@@ -2323,7 +2323,7 @@ async def get_kidibar_stats(
     )
 
 
-@router.get("/recepcion", dependencies=[Depends(require_role(["recepcion", "super_admin", "admin_viewer"]))])
+@router.get("/recepcion", dependencies=[Depends(require_role(["recepcion", "super_admin", "admin_viewer", "monitor"]))])
 async def get_recepcion_stats(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

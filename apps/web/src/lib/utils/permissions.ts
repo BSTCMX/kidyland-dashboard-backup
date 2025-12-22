@@ -90,6 +90,20 @@ export function clearPermissionCache(): void {
   permissionCache.clear();
 }
 
+/**
+ * Check if user can execute day operations (start/close day).
+ * 
+ * Only kidibar, recepcion, and super_admin can execute day operations.
+ * Other roles (admin_viewer, monitor) can view but not execute.
+ * 
+ * @param userRole - User's role
+ * @returns True if user can execute day operations
+ */
+export function canExecuteDayOperations(userRole: UserRole | undefined): boolean {
+  if (!userRole) return false;
+  return userRole === "kidibar" || userRole === "recepcion" || userRole === "super_admin";
+}
+
 
 
 

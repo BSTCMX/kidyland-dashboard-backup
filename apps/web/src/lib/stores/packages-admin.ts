@@ -10,7 +10,8 @@ import { get, post, put, del } from "@kidyland/utils";
 
 export interface PackageCreate {
   name: string;
-  sucursal_id: string;
+  sucursales_ids: string[]; // Required: at least one sucursal
+  sucursal_id?: string; // Optional: will be derived from sucursales_ids if not provided
   description?: string;
   price_cents: number;
   included_items: Array<{
@@ -33,6 +34,8 @@ export interface PackageUpdate {
     duration_minutes?: number; // For services (optional)
   }>;
   active?: boolean;
+  sucursales_ids?: string[];
+  sucursal_id?: string; // Optional: for backward compatibility
 }
 
 export interface PackagesAdminState {

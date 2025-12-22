@@ -121,6 +121,96 @@ function formatDurationPrice(duration: number, priceCents: number): string {
 }
 
 /**
+ * Draw text with enhanced contrast for readability over backgrounds.
+ * 
+ * Clean Architecture: Reusable utility function for text rendering with contrast.
+ * 
+ * This function draws text with optional stroke and shadow to improve readability
+ * when text is rendered over complex backgrounds (especially background images).
+ * 
+ * @param ctx - Canvas 2D rendering context
+ * @param text - Text string to render
+ * @param x - X coordinate
+ * @param y - Y coordinate
+ * @param options - Optional rendering options
+ * @param options.strokeWidth - Width of text stroke outline (default: 2)
+ * @param options.strokeColor - Color of stroke (default: "rgba(0, 0, 0, 0.8)")
+ * @param options.shadowBlur - Blur radius for shadow (default: 4)
+ * @param options.shadowColor - Color of shadow (default: "rgba(0, 0, 0, 0.5)")
+ * @param options.shadowOffsetX - Horizontal shadow offset (default: 2)
+ * @param options.shadowOffsetY - Vertical shadow offset (default: 2)
+ * @param options.enableStroke - Enable stroke outline (default: true)
+ * @param options.enableShadow - Enable shadow effect (default: true)
+ */
+export function drawTextWithContrast(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  options: {
+    strokeWidth?: number;
+    strokeColor?: string;
+    shadowBlur?: number;
+    shadowColor?: string;
+    shadowOffsetX?: number;
+    shadowOffsetY?: number;
+    enableStroke?: boolean;
+    enableShadow?: boolean;
+  } = {}
+): void {
+  // Default options for optimal contrast
+  const {
+    strokeWidth = 2,
+    strokeColor = "rgba(0, 0, 0, 0.8)",
+    shadowBlur = 4,
+    shadowColor = "rgba(0, 0, 0, 0.5)",
+    shadowOffsetX = 2,
+    shadowOffsetY = 2,
+    enableStroke = true,
+    enableShadow = true,
+  } = options;
+
+  // Save current context state
+  ctx.save();
+
+  // Configure shadow (drawn first, behind text)
+  if (enableShadow) {
+    ctx.shadowBlur = shadowBlur;
+    ctx.shadowColor = shadowColor;
+    ctx.shadowOffsetX = shadowOffsetX;
+    ctx.shadowOffsetY = shadowOffsetY;
+  } else {
+    // Disable shadow
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+  }
+
+  // Draw stroke outline (if enabled) - provides strong contrast
+  if (enableStroke) {
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = strokeWidth;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeText(text, x, y);
+  }
+
+  // Draw filled text (on top of stroke/shadow)
+  // Shadow is applied to fillText, so we need to reset shadow for stroke
+  if (enableStroke && enableShadow) {
+    // Re-apply shadow for fill (stroke doesn't use shadow)
+    ctx.shadowBlur = shadowBlur;
+    ctx.shadowColor = shadowColor;
+    ctx.shadowOffsetX = shadowOffsetX;
+    ctx.shadowOffsetY = shadowOffsetY;
+  }
+  ctx.fillText(text, x, y);
+
+  // Restore context state
+  ctx.restore();
+}
+
+/**
  * Draw Kidyland branding header on canvas.
  */
 export function drawBrandingHeader(
@@ -246,7 +336,12 @@ export async function drawServicesSection(
       }
       serviceName += "...";
     }
-    ctx.fillText(serviceName, finalX + 15, itemY + 35);
+    // Use drawTextWithContrast for better readability over backgrounds
+    drawTextWithContrast(ctx, serviceName, finalX + 15, itemY + 35, {
+      strokeWidth: Math.max(1, Math.round(fontSizes.itemName / 24)), // Proportional stroke width
+      enableStroke: true,
+      enableShadow: true,
+    });
     
     // Duration and prices info - display all available durations/prices horizontally
     if (service.durations_allowed.length > 0) {
@@ -300,7 +395,12 @@ export async function drawServicesSection(
         }
       }
       
-      ctx.fillText(displayText, finalX + 15, itemY + 65);
+      // Use drawTextWithContrast for better readability over backgrounds
+      drawTextWithContrast(ctx, displayText, finalX + 15, itemY + 65, {
+        strokeWidth: Math.max(1, Math.round(fontSizes.serviceDurationPrice / 24)), // Proportional stroke width
+        enableStroke: true,
+        enableShadow: true,
+      });
     }
   });
   
@@ -398,14 +498,25 @@ export async function drawProductsSection(
       }
       productName += "...";
     }
-    ctx.fillText(productName, itemX + 15, itemY + 35);
+    // Use drawTextWithContrast for better readability over backgrounds
+    drawTextWithContrast(ctx, productName, itemX + 15, itemY + 35, {
+      strokeWidth: Math.max(1, Math.round(fontSizes.itemName / 24)), // Proportional stroke width
+      enableStroke: true,
+      enableShadow: true,
+    });
     
     // Price (uses calculated price fontSize)
     const price = `$${(product.price_cents / 100).toFixed(2)}`;
     ctx.fillStyle = colors.success;
     ctx.font = `bold ${fontSizes.price}px Arial, sans-serif`;
     ctx.textAlign = "right";
-    ctx.fillText(price, itemX + grid.itemWidth - 15, itemY + 35);
+    // Use drawTextWithContrast for better readability over backgrounds
+    drawTextWithContrast(ctx, price, itemX + grid.itemWidth - 15, itemY + 35, {
+      strokeWidth: Math.max(1, Math.round(fontSizes.price / 24)), // Proportional stroke width
+      strokeColor: "rgba(0, 0, 0, 0.9)", // Darker stroke for colored text
+      enableStroke: true,
+      enableShadow: true,
+    });
     
     // Note: Stock information is intentionally omitted for public menu displays
   });
@@ -514,14 +625,25 @@ export async function drawPackagesSection(
       }
       packageName += "...";
     }
-    ctx.fillText(packageName, itemX + 15, itemY + 35);
+    // Use drawTextWithContrast for better readability over backgrounds
+    drawTextWithContrast(ctx, packageName, itemX + 15, itemY + 35, {
+      strokeWidth: Math.max(1, Math.round(fontSizes.itemName / 24)), // Proportional stroke width
+      enableStroke: true,
+      enableShadow: true,
+    });
     
     // Price (prominent, uses calculated price fontSize)
     const price = `$${(pkg.price_cents / 100).toFixed(2)}`;
     ctx.fillStyle = colors.warning;
     ctx.font = `bold ${fontSizes.price}px Arial, sans-serif`;
     ctx.textAlign = "right";
-      ctx.fillText(price, itemX + grid.itemWidth - 15, itemY + 35);
+    // Use drawTextWithContrast for better readability over backgrounds
+    drawTextWithContrast(ctx, price, itemX + grid.itemWidth - 15, itemY + 35, {
+      strokeWidth: Math.max(1, Math.round(fontSizes.price / 24)), // Proportional stroke width
+      strokeColor: "rgba(0, 0, 0, 0.9)", // Darker stroke for colored text
+      enableStroke: true,
+      enableShadow: true,
+    });
     
     // Description (if available, uses larger packageDescription fontSize for better readability)
     if (pkg.description) {
@@ -537,7 +659,12 @@ export async function drawPackagesSection(
         }
         description += "...";
       }
-      ctx.fillText(description, itemX + 15, itemY + 75);
+      // Use drawTextWithContrast for better readability over backgrounds
+      drawTextWithContrast(ctx, description, itemX + 15, itemY + 75, {
+        strokeWidth: Math.max(1, Math.round(fontSizes.packageDescription / 24)), // Proportional stroke width
+        enableStroke: true,
+        enableShadow: true,
+      });
     }
     
     ctx.restore();
@@ -727,12 +854,55 @@ export function calculateMenuPages(
   const totalContentHeight = calculateTotalContentHeight(width, services, products, packages);
   const availableHeightPerPage = height - headerHeight - footerHeight;
   
-  return calculatePagesNeeded(
+  // CRITICAL FIX: Use availableHeightPerPage instead of height
+  // This ensures pagination calculation uses the correct available space per page
+  const pagesNeeded = calculatePagesNeeded(
     totalContentHeight,
-    height,
+    availableHeightPerPage,
     headerHeight,
     footerHeight
   );
+  
+  // Log calculation in dev mode for debugging (only when result changes)
+  // Use a static variable to track last logged result to avoid excessive logging
+  if (import.meta.env?.DEV) {
+    const lastLogged = (calculateMenuPages as any).__lastLogged;
+    const shouldLog = !lastLogged || 
+      lastLogged.pagesNeeded !== pagesNeeded ||
+      lastLogged.totalContentHeight !== totalContentHeight ||
+      lastLogged.itemCounts?.services !== services.length ||
+      lastLogged.itemCounts?.products !== products.length ||
+      lastLogged.itemCounts?.packages !== packages.length;
+    
+    if (shouldLog) {
+      console.log("[calculateMenuPages] Pagination calculation:", {
+        totalContentHeight,
+        availableHeightPerPage,
+        height,
+        headerHeight,
+        footerHeight,
+        pagesNeeded,
+        hasBackground,
+        itemCounts: {
+          services: services.length,
+          products: products.length,
+          packages: packages.length,
+        },
+      });
+      // Store last logged values to avoid duplicate logs
+      (calculateMenuPages as any).__lastLogged = {
+        pagesNeeded,
+        totalContentHeight,
+        itemCounts: {
+          services: services.length,
+          products: products.length,
+          packages: packages.length,
+        },
+      };
+    }
+  }
+  
+  return pagesNeeded;
 }
 
 

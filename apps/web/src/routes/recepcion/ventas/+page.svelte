@@ -3,14 +3,14 @@
    * Ventas page - Sales history for reception.
    */
   import { onMount } from "svelte";
-  import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import { user, hasAccessSecure } from "$lib/stores/auth";
+  import { gotoWithQueryParams } from "$lib/utils/navigation";
   import SalesHistory from "$lib/components/shared/SalesHistory.svelte";
 
   onMount(() => {
     if (!$user || !hasAccessSecure("/recepcion")) {
-      goto("/recepcion");
+      gotoWithQueryParams("/recepcion", $page.url);
     }
   });
 
@@ -21,7 +21,7 @@
 
 <div class="ventas-page">
   <div class="page-header">
-    <button class="back-button" on:click={() => goto("/recepcion")}>← Volver</button>
+    <button class="back-button" on:click={() => gotoWithQueryParams("/recepcion", $page.url)}>← Volver</button>
     <h1 class="page-title">Historial de Ventas</h1>
   </div>
 

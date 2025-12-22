@@ -372,7 +372,7 @@ export function buildExportUrl(
     params.append("end_date", config.endDate);
   }
 
-  return `${baseUrl}/reports/export/${config.format}?${params.toString()}`;
+  return `${baseUrl}/exports/${config.format}?${params.toString()}`;
 }
 
 /**

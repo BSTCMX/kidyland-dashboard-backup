@@ -96,3 +96,46 @@ def get_static_files_dir() -> str:
         Path to static files directory (relative or absolute)
     """
     return settings.STATIC_FILES_DIR
+
+
+def get_cors_headers(additional_headers: dict | None = None) -> dict:
+    """
+    Get CORS headers dictionary for responses.
+    
+    Clean Architecture: Configuration logic in core.config
+    Reusable function for consistent CORS headers across all handlers.
+    
+    Behavior:
+    - Uses get_cors_origins() to determine allowed origins dynamically
+    - Sets allow_credentials based on whether wildcard is used
+    - Includes standard CORS headers
+    - Can merge additional headers if provided
+    
+    Args:
+        additional_headers: Optional dict of additional headers to merge
+        
+    Returns:
+        Dictionary of CORS headers ready to use in responses
+    """
+    origins = get_cors_origins()
+    
+    # Determine if we're using wildcard (development/test) or specific origins (production)
+    using_wildcard = origins == ["*"]
+    
+    # Build base CORS headers
+    cors_headers = {
+        "Access-Control-Allow-Origin": origins[0] if origins else "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+    }
+    
+    # Only set allow-credentials if not using wildcard
+    # (wildcard + credentials is incompatible per CORS spec)
+    if not using_wildcard:
+        cors_headers["Access-Control-Allow-Credentials"] = "true"
+    
+    # Merge additional headers if provided
+    if additional_headers:
+        cors_headers.update(additional_headers)
+    
+    return cors_headers

@@ -17,6 +17,9 @@
   import { user } from "$lib/stores/auth";
   import { RefreshCw } from "lucide-svelte";
 
+  // Props
+  export let selectedSucursalId: string | null = null;
+
   // Component state
   let disabled = false;
   let statusMessage = "";
@@ -58,10 +61,15 @@
   /**
    * Handle refresh button click.
    * Uses refreshMetrics from store as single source of truth.
+   * 
+   * Priority for sucursalId:
+   * 1. selectedSucursalId prop (from SucursalSelector in admin dashboard)
+   * 2. user.sucursal_id (for non-super_admin users)
+   * 3. null (for all sucursales, typically super_admin without selection)
    */
   async function handleRefresh() {
-    // Get sucursal ID from user store or use null for all
-    const sucursalId = $user?.sucursal_id || null;
+    // Use selectedSucursalId prop if provided, otherwise fallback to user's sucursal_id
+    const sucursalId = selectedSucursalId !== null ? selectedSucursalId : ($user?.sucursal_id || null);
     
     try {
       // Call refreshMetrics from store - it handles all validation and state management

@@ -6,8 +6,80 @@
 
 import jsPDF from "jspdf";
 import type { FFmpeg } from "@ffmpeg/ffmpeg";
+import { configureCanvasQuality } from "./canvas-quality";
 // Dynamic imports for FFmpeg utilities (browser-only, cannot be imported in SSR)
 // These will be imported only when needed in loadFFmpeg()
+
+/**
+ * PDF compression mode for jsPDF addImage().
+ * 
+ * Clean Architecture: Configurable constant, no hardcoding.
+ * 
+ * Options:
+ * - "FAST": Fast compression, lower quality (smaller file size)
+ * - "SLOW": Slow compression, higher quality (larger file size, better for text)
+ * - undefined: No additional compression, maximum quality
+ * 
+ * Default: "SLOW" for optimal text quality in PDF exports.
+ */
+const PDF_COMPRESSION_MODE: "FAST" | "SLOW" | undefined = "SLOW";
+
+/**
+ * Scale factor for high-resolution canvas export.
+ * 
+ * Clean Architecture: Configurable constant, no hardcoding.
+ * 
+ * Higher values (2x, 3x) produce better quality but larger file sizes.
+ * 2x is optimal balance between quality and performance.
+ * 
+ * Default: 2 for 2x resolution (retina/high-DPI quality).
+ */
+const EXPORT_SCALE_FACTOR = 2;
+
+/**
+ * Create a high-resolution canvas for direct rendering.
+ * 
+ * Clean Architecture: Reusable utility function for high-resolution canvas creation.
+ * 
+ * Creates a temporary canvas at higher resolution (2x by default) and configures
+ * the context for direct rendering at high resolution. The context is scaled so
+ * that content rendered at logical dimensions appears at higher resolution.
+ * 
+ * FASE 3: This enables direct high-resolution rendering instead of post-render scaling.
+ * 
+ * @param logicalWidth - Logical width (original canvas width)
+ * @param logicalHeight - Logical height (original canvas height)
+ * @param scaleFactor - Scale factor for resolution (default: EXPORT_SCALE_FACTOR)
+ * @returns Object with high-resolution canvas and configured context
+ */
+function createHighResolutionCanvasForRendering(
+  logicalWidth: number,
+  logicalHeight: number,
+  scaleFactor: number = EXPORT_SCALE_FACTOR
+): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  // Create temporary canvas at higher resolution
+  const exportCanvas = document.createElement("canvas");
+  exportCanvas.width = logicalWidth * scaleFactor;
+  exportCanvas.height = logicalHeight * scaleFactor;
+
+  // Get context and configure for high quality
+  const exportCtx = exportCanvas.getContext("2d");
+  if (!exportCtx) {
+    throw new Error("Failed to get 2d context for export canvas");
+  }
+
+  // Configure quality settings for export canvas
+  exportCtx.imageSmoothingEnabled = true;
+  if ("imageSmoothingQuality" in exportCtx) {
+    (exportCtx as any).imageSmoothingQuality = "high";
+  }
+
+  // Scale the context so that logical dimensions map to high-resolution pixels
+  // This allows content to be rendered directly at high resolution
+  exportCtx.scale(scaleFactor, scaleFactor);
+
+  return { canvas: exportCanvas, ctx: exportCtx };
+}
 
 /**
  * Export canvas to PDF.
@@ -41,7 +113,8 @@ export async function exportToPDF(
     });
 
     // Add image to PDF (full page)
-    pdf.addImage(canvasDataUrl, "PNG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
+    // Use configurable compression mode for optimal text quality
+    pdf.addImage(canvasDataUrl, "PNG", 0, 0, pdfWidth, pdfHeight, undefined, PDF_COMPRESSION_MODE);
 
     // Save PDF
     pdf.save(`${filename}.pdf`);
@@ -59,12 +132,14 @@ export async function exportToPDF(
  * @param canvas - Canvas element to draw on
  * @param pageIndex - Zero-based page index to render (0 for first page)
  * @param totalPages - Total number of pages
+ * @param highResolution - If true, canvas is at high resolution for export (scale factor applied)
  * @returns Promise that resolves when the page is fully rendered
  */
 export type DrawPageFunction = (
   canvas: HTMLCanvasElement,
   pageIndex: number,
-  totalPages: number
+  totalPages: number,
+  highResolution?: boolean
 ) => Promise<void>;
 
 /**
@@ -95,8 +170,9 @@ export async function exportToPDFHighQuality(
       });
     });
 
-    // Convert canvas to image data directly (no cloning needed)
-    // cloneNode() doesn't copy canvas content, so we use the original canvas
+    // Convert canvas to image data directly
+    // PNG is lossless, so quality parameter doesn't apply, but we keep it for API consistency
+    // FASE 1: Removed post-render scaling - it doesn't improve quality and causes freezing
     const canvasDataUrl = canvas.toDataURL("image/png", quality);
 
     // Validate that we got valid image data (not empty/black)
@@ -122,7 +198,8 @@ export async function exportToPDFHighQuality(
     });
 
     // Add image to PDF (full page)
-    pdf.addImage(canvasDataUrl, "PNG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
+    // Use configurable compression mode for optimal text quality
+    pdf.addImage(canvasDataUrl, "PNG", 0, 0, pdfWidth, pdfHeight, undefined, PDF_COMPRESSION_MODE);
 
     // Save PDF
     pdf.save(`${filename}.pdf`);
@@ -203,8 +280,20 @@ export async function exportToPDFMultiPage(
         console.log(`[PDF Export] Rendering page ${pageIndex + 1} of ${totalPages}`);
       }
 
-      // Render the page on canvas using provided function
-      await drawPageFunction(canvas, pageIndex, totalPages);
+      // FASE 3: Render directly to high-resolution canvas for better quality
+      // Create high-resolution canvas for this page
+      const { canvas: highResCanvas, ctx: highResCtx } = createHighResolutionCanvasForRendering(
+        pdfWidth,
+        pdfHeight,
+        EXPORT_SCALE_FACTOR
+      );
+
+      // Configure canvas quality (FASE 2: Ensure quality settings are applied)
+      configureCanvasQuality(highResCtx);
+
+      // Render the page directly at high resolution
+      // Pass highResolution flag so drawPageFunction knows it's rendering at high res
+      await drawPageFunction(highResCanvas, pageIndex, totalPages, true);
 
       // Wait for next frame to ensure canvas is fully rendered
       // Double RAF ensures we wait for the next paint cycle
@@ -216,8 +305,17 @@ export async function exportToPDFMultiPage(
         });
       });
 
-      // Capture canvas as image
-      const canvasDataUrl = canvas.toDataURL("image/png", quality);
+      // Capture high-resolution canvas as image
+      // PNG is lossless, so quality parameter doesn't apply, but we keep it for API consistency
+      const canvasDataUrl = highResCanvas.toDataURL("image/png", quality);
+
+      // Clean up high-resolution canvas immediately after capture
+      // This helps free memory, especially important for multi-page exports
+      highResCtx.clearRect(0, 0, highResCanvas.width, highResCanvas.height);
+
+      // Yield to browser to prevent UI freezing
+      // This allows the browser to update the UI between pages
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
       // Validate that we got valid image data
       if (!canvasDataUrl || canvasDataUrl === "data:," || canvasDataUrl.length < 100) {
@@ -245,7 +343,8 @@ export async function exportToPDFMultiPage(
       }
 
       // Add image to PDF (full page)
-      pdf.addImage(canvasDataUrl, "PNG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
+      // Use configurable compression mode for optimal text quality
+      pdf.addImage(canvasDataUrl, "PNG", 0, 0, pdfWidth, pdfHeight, undefined, PDF_COMPRESSION_MODE);
 
       // Small delay to ensure jsPDF processes the page addition
       // This helps prevent potential race conditions in jsPDF's internal state

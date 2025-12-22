@@ -24,7 +24,6 @@ from models.sucursal import Sucursal
 from services.report_service import ReportService
 from utils.package_helpers import get_service_package_ids, get_product_package_ids
 from utils.datetime_helpers import get_business_date_in_timezone
-from sqlalchemy import text
 from uuid import UUID as UUIDType
 from datetime import timezone as dt_timezone
 

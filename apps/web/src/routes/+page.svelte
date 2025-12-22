@@ -33,6 +33,7 @@
   async function handleSubmit(event: Event) {
     event.preventDefault();
     
+    // Validate inputs
     if (!username.trim() || !password.trim()) {
       error = "Por favor, completa todos los campos";
       return;
@@ -42,10 +43,29 @@
     error = null;
 
     try {
+      // Log in development for debugging
+      if (import.meta.env.DEV) {
+        console.log("[Login Page] Submitting form - username:", username.trim());
+      }
+      
       await login(username.trim(), password);
+      
       // Redirect handled by login function
+      if (import.meta.env.DEV) {
+        console.debug("[Login Page] Login successful, redirecting...");
+      }
     } catch (err: any) {
-      error = err.message || "Error al iniciar sesión. Verifica tus credenciales.";
+      // Enhanced error handling with logging
+      const errorMessage = err.message || "Error al iniciar sesión. Verifica tus credenciales.";
+      error = errorMessage;
+      
+      if (import.meta.env.DEV) {
+        console.error("[Login Page] Login error:", {
+          message: err.message,
+          name: err.name,
+          stack: err.stack
+        });
+      }
     } finally {
       loading = false;
     }

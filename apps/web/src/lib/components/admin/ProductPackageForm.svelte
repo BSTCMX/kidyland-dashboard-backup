@@ -25,7 +25,7 @@
   // Form state
   let formData: PackageCreate = {
     name: "",
-    sucursal_id: sucursalId,
+    sucursales_ids: sucursalId ? [sucursalId] : [],
     description: "",
     price_cents: 0,
     included_items: [],
@@ -119,7 +119,7 @@
         
         formData = {
           name: package_.name,
-          sucursal_id: package_.sucursal_id,
+          sucursales_ids: package_.sucursales_ids || (package_.sucursal_id ? [package_.sucursal_id] : []),
           description: package_.description || "",
           price_cents: package_.price_cents,
           included_items: productItems,
@@ -127,9 +127,7 @@
         };
         priceInput = (package_.price_cents / 100).toFixed(2);
         // Update selectedSucursal if different from prop (edit mode)
-        if (package_.sucursal_id && !selectedSucursal.includes(package_.sucursal_id)) {
-          selectedSucursal = [package_.sucursal_id];
-        }
+        selectedSucursal = package_.sucursales_ids || (package_.sucursal_id ? [package_.sucursal_id] : []);
         // Sync lastLoadedSucursalId
         if (package_.sucursal_id && lastLoadedSucursalId !== package_.sucursal_id) {
           lastLoadedSucursalId = package_.sucursal_id;
@@ -164,7 +162,7 @@
         // Create mode: initialize empty form
         formData = {
           name: "",
-          sucursal_id: sucursalId || "",
+          sucursales_ids: sucursalId ? [sucursalId] : [],
           description: "",
           price_cents: 0,
           included_items: [],
@@ -174,9 +172,7 @@
         itemsList = [];
         selectedProducts = [];
         // selectedSucursal already initialized from props, but update if different
-        if (sucursalId && !selectedSucursal.includes(sucursalId)) {
-          selectedSucursal = [sucursalId];
-        }
+        selectedSucursal = sucursalId ? [sucursalId] : [];
         // Ensure lastLoadedSucursalId is in sync
         if (sucursalId && lastLoadedSucursalId !== sucursalId) {
           lastLoadedSucursalId = sucursalId;
@@ -196,8 +192,8 @@
     }
   }
 
-  // Sync selectedSucursal to formData.sucursal_id
-  $: formData.sucursal_id = selectedSucursal.length > 0 ? selectedSucursal[0] : "";
+  // Sync selectedSucursal to formData.sucursales_ids
+  $: formData.sucursales_ids = selectedSucursal;
 
   $: availableProducts = $productsAdminStore.list.filter((p) => p.active !== false);
 
@@ -218,12 +214,9 @@
     formData.price_cents = calculatedPriceCents;
   }
 
-  // Handle sucursal selection
+  // Handle sucursal selection (now supports multiple sucursales)
   function handleSucursalChange(selected: (string | number)[]) {
     selectedSucursal = selected.map((v) => String(v));
-    if (selectedSucursal.length > 1) {
-      selectedSucursal = [selectedSucursal[0]];
-    }
   }
 
   // Handle manual price input (detects user interaction)
@@ -249,8 +242,8 @@
       errors.name = "Nombre es requerido";
     }
 
-    if (!formData.sucursal_id) {
-      errors.sucursal_id = "Sucursal es requerida";
+    if (!formData.sucursales_ids || formData.sucursales_ids.length === 0) {
+      errors.sucursal_id = "Al menos una sucursal es requerida";
     }
 
     if (formData.price_cents <= 0) {

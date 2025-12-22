@@ -120,7 +120,8 @@ export interface ServiceAlert {
 
 export interface Package {
   id: string;
-  sucursal_id: string;
+  sucursal_id: string; // Kept for backward compatibility
+  sucursales_ids?: string[]; // New: support for multiple sucursales
   name: string;
   description: string;
   included_items: PackageItem[];

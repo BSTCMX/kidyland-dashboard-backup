@@ -14,6 +14,7 @@
   import { page } from "$app/stores";
   import { ROLE_ROUTES } from "$lib/types";
   import type { UserRole } from "$lib/types";
+  import { getNavLink } from "$lib/utils/navigation";
 
   // Reactive access check - computed once and reactive to user changes
   // Uses secure checks that verify token-store consistency
@@ -144,7 +145,7 @@
       <nav class="sidebar-nav">
         {#each kidibarNavItems as item}
           <a
-            href={item.route}
+            href={getNavLink(item.route, $page.url)}
             class="nav-link"
             class:active={currentPath === item.route || (item.route !== "/kidibar" && currentPath.startsWith(item.route))}
             on:click={closeSidebar}

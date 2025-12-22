@@ -1,6 +1,9 @@
 <script lang="ts">
   /**
    * PackageList component - Displays packages in a table with CRUD operations.
+   * 
+   * @param module - Module context: "admin" (default) or "kidibar"
+   * @param filterByType - If true, filter packages by type (only product packages for kidibar)
    */
   import { onMount } from "svelte";
   import { Button } from "@kidyland/ui";
@@ -10,6 +13,14 @@
     fetchAllPackages,
     deletePackage,
   } from "$lib/stores/packages-admin";
+  import {
+    productsAdminStore,
+    fetchAllProducts,
+  } from "$lib/stores/products-admin";
+  import {
+    servicesAdminStore,
+    fetchAllServices,
+  } from "$lib/stores/services-admin";
   import { canEdit } from "$lib/stores/auth";
   import { user } from "$lib/stores/auth";
   import { getModulePermissions } from "$lib/utils/permissions";
@@ -27,11 +38,26 @@
     Gamepad2
   } from "lucide-svelte";
 
+  // Props
+  export let module: "admin" | "kidibar" = "admin";
+  export let filterByType: boolean = false;
+  export let hideCreateEdit: boolean = false;
+
   // Reactive stores
   $: currentUser = $user;
-  $: adminPerms = currentUser ? getModulePermissions(currentUser.role, "admin") : null;
-  $: canViewPackages = adminPerms?.canAccess ?? false;
-  $: canEditPackages = adminPerms?.canEdit ?? false;
+  $: modulePerms = currentUser ? getModulePermissions(currentUser.role, module) : null;
+  $: canViewPackages = modulePerms?.canAccess ?? false;
+  $: canEditPackages = modulePerms?.canEdit ?? false;
+  $: showCreateEditButtons = canEditPackages && !hideCreateEdit;
+  
+  // Filter packages by type if needed
+  // - For kidibar: only show product packages
+  // - For recepcion: only show service packages
+  $: displayedPackages = filterByType && module === "kidibar"
+    ? $packagesAdminStore.list.filter((pkg: Package) => inferPackageType(pkg.included_items) === "product")
+    : filterByType && module === "recepcion"
+      ? $packagesAdminStore.list.filter((pkg: Package) => inferPackageType(pkg.included_items) === "service")
+      : $packagesAdminStore.list;
 
   // Local state
   let selectedPackage: Package | null = null;
@@ -41,14 +67,42 @@
   let showDeleteConfirm = false;
   let editPackageType: "product" | "service" | null = null;
 
-  // Load packages on mount
+  // Load packages, products, and services on mount
   // Logic: super_admin and admin_viewer see all packages (no filter), other users see filtered by sucursal_id
-  onMount(() => {
+  // For services: super_admin and admin_viewer load all services (no filter) to ensure all service names
+  // are available for package items, even if packages contain services from other sucursales.
+  // Other roles load services filtered by their sucursal_id.
+  onMount(async () => {
     if (canViewPackages) {
       const filterSucursalId = currentUser?.sucursal_id || undefined;
-      fetchAllPackages(filterSucursalId);
+      const isSuperAdminOrAdminViewer = currentUser?.role === "super_admin" || currentUser?.role === "admin_viewer";
+      
+      // Load packages and products with appropriate filter
+      const packagesPromise = fetchAllPackages(filterSucursalId);
+      const productsPromise = fetchAllProducts(filterSucursalId);
+      
+      // For services: super_admin and admin_viewer load all services (no filter)
+      // to ensure all service names are available for package items
+      const servicesPromise = isSuperAdminOrAdminViewer 
+        ? fetchAllServices(undefined) // Load all services for super_admin/admin_viewer
+        : fetchAllServices(filterSucursalId); // Filter by sucursal_id for other roles
+      
+      // Wait for all data to load before rendering
+      await Promise.all([
+        packagesPromise,
+        productsPromise,
+        servicesPromise,
+      ]);
     }
   });
+
+  // Create maps for O(1) lookup of product and service names
+  $: productMap = new Map(
+    $productsAdminStore.list.map((p) => [p.id, p.name])
+  );
+  $: serviceMap = new Map(
+    $servicesAdminStore.list.map((s) => [s.id, s.name])
+  );
 
   function formatPrice(cents: number): string {
     return `$${(cents / 100).toFixed(2)}`;
@@ -57,6 +111,25 @@
   function formatItems(items: Package["included_items"]): string {
     if (!items || items.length === 0) return "Sin items";
     return `${items.length} item(s)`;
+  }
+
+  function formatItemsWithNames(items: Package["included_items"]): string {
+    if (!items || items.length === 0) return "Sin items";
+    
+    const itemNames: string[] = [];
+    
+    for (const item of items) {
+      if (item.product_id) {
+        const productName = productMap.get(item.product_id) || `Producto ${item.product_id.slice(0, 8)}...`;
+        const quantity = item.quantity && item.quantity > 1 ? ` (x${item.quantity})` : "";
+        itemNames.push(`${productName}${quantity}`);
+      } else if (item.service_id) {
+        const serviceName = serviceMap.get(item.service_id) || `Servicio ${item.service_id.slice(0, 8)}...`;
+        itemNames.push(serviceName);
+      }
+    }
+    
+    return itemNames.length > 0 ? itemNames.join(", ") : "Sin items";
   }
 
   async function handleDelete() {
@@ -126,7 +199,7 @@
         Gestión de Paquetes
       </h1>
       
-      {#if canEditPackages}
+      {#if showCreateEditButtons}
         <div class="create-package-button-wrapper">
           <Button 
             variant="brutalist"
@@ -152,10 +225,10 @@
     <!-- Loading state -->
     {#if $packagesAdminStore.loading}
       <LoadingSpinner message="Cargando paquetes..." />
-    {:else if $packagesAdminStore.list.length === 0 && canViewPackages}
+    {:else if displayedPackages.length === 0 && canViewPackages}
       <div class="empty-state">
         <p>No hay paquetes registrados</p>
-        {#if canEditPackages}
+        {#if showCreateEditButtons}
           <div class="create-package-button-wrapper">
             <Button variant="brutalist" on:click={handleCreateProductClick}>
               <ShoppingBag size={18} strokeWidth={1.5} style="display: inline-block; vertical-align: middle; margin-right: 6px;" />
@@ -177,20 +250,20 @@
       <!-- Desktop: Grid layout, Mobile: Cards layout -->
       <div class="packages-grid-container">
         <!-- Desktop Grid Headers (hidden on mobile) -->
-        <div class="grid-headers">
+        <div class="grid-headers" class:readonly={!showCreateEditButtons}>
           <div class="grid-header">Nombre</div>
           <div class="grid-header">Descripción</div>
           <div class="grid-header">Precio</div>
           <div class="grid-header">Items Incluidos</div>
           <div class="grid-header">Estado</div>
-          {#if canEditPackages}
+          {#if showCreateEditButtons}
             <div class="grid-header">Acciones</div>
           {/if}
         </div>
 
         <!-- Packages Grid Items -->
-        <div class="packages-grid">
-          {#each $packagesAdminStore.list as pkg (pkg.id)}
+        <div class="packages-grid" class:readonly={!showCreateEditButtons}>
+          {#each displayedPackages as pkg (pkg.id)}
             <div class="package-grid-item">
               <!-- Nombre -->
               <div class="grid-cell name-cell">
@@ -209,7 +282,7 @@
               
               <!-- Items Incluidos -->
               <div class="grid-cell items-cell">
-                {formatItems(pkg.included_items)}
+                {formatItemsWithNames(pkg.included_items)}
               </div>
               
               <!-- Estado -->
@@ -218,7 +291,7 @@
               </div>
               
               <!-- Acciones -->
-              {#if canEditPackages}
+              {#if showCreateEditButtons}
                 <div class="grid-cell actions-cell">
                   <div class="actions-group">
                   <Button
@@ -248,7 +321,7 @@
 
       <!-- Packages cards (Mobile - Enhanced) -->
       <div class="packages-cards">
-        {#each $packagesAdminStore.list as pkg (pkg.id)}
+        {#each displayedPackages as pkg (pkg.id)}
           <div class="package-card">
             <div class="package-card-header">
               <h3 class="package-card-title">{pkg.name}</h3>
@@ -267,10 +340,10 @@
               </div>
               <div class="package-card-row">
                 <span class="package-card-label">Items Incluidos:</span>
-                <span class="package-card-value">{formatItems(pkg.included_items)}</span>
+                <span class="package-card-value">{formatItemsWithNames(pkg.included_items)}</span>
               </div>
             </div>
-            {#if canEditPackages}
+            {#if showCreateEditButtons}
               <div class="package-card-actions">
                   <Button
                     variant="brutalist"
@@ -299,7 +372,7 @@
 </div>
 
 <!-- Create Product Package Modal -->
-{#if showCreateProductModal && canEditPackages}
+{#if showCreateProductModal && showCreateEditButtons}
   <ProductPackageForm
     open={showCreateProductModal}
     package_={null}
@@ -310,7 +383,7 @@
 {/if}
 
 <!-- Create Service Package Modal -->
-{#if showCreateServiceModal && canEditPackages}
+{#if showCreateServiceModal && showCreateEditButtons}
   <ServicePackageForm
     open={showCreateServiceModal}
     package_={null}
@@ -321,7 +394,7 @@
 {/if}
 
 <!-- Edit Modal - Product Package -->
-{#if showEditModal && selectedPackage && editPackageType === "product" && canEditPackages}
+{#if showEditModal && selectedPackage && editPackageType === "product" && showCreateEditButtons}
   <ProductPackageForm
     open={showEditModal}
     package_={selectedPackage}
@@ -336,7 +409,7 @@
 {/if}
 
 <!-- Edit Modal - Service Package -->
-{#if showEditModal && selectedPackage && editPackageType === "service" && canEditPackages}
+{#if showEditModal && selectedPackage && editPackageType === "service" && showCreateEditButtons}
   <ServicePackageForm
     open={showEditModal}
     package_={selectedPackage}
@@ -509,7 +582,9 @@
     box-shadow: var(--shadow-md);
     backdrop-filter: blur(10px);
     position: relative;
-    overflow: hidden;
+    overflow-x: auto; /* Enable horizontal scroll on desktop if needed */
+    overflow-y: visible; /* Allow vertical overflow for dropdowns */
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
   }
 
   /* Gradient top border - Kidyland branding */
@@ -536,6 +611,7 @@
     grid-template-columns: 1fr; /* Mobile: single column */
     gap: 0;
     width: 100%;
+    min-width: 0; /* Prevent grid from overflowing container */
   }
 
   /* Desktop: Fixed 6-column grid (5 columns + 1 for actions if canEdit) */
@@ -543,6 +619,7 @@
     .packages-grid {
       grid-template-columns: 1.5fr 1.5fr 1fr 1fr 0.8fr 2fr !important;
       gap: 0 !important;
+      min-width: 800px; /* Ensure minimum width for proper column alignment */
     }
   }
 
@@ -602,6 +679,12 @@
       position: sticky;
       top: 0;
       z-index: 10;
+      min-width: 800px; /* Match grid min-width for proper alignment */
+    }
+
+    /* Headers with 5 columns when canEdit is false (read-only mode) */
+    .grid-headers.readonly {
+      grid-template-columns: 1.5fr 1.5fr 1fr 1fr 0.8fr; /* 5 columns when readonly */
     }
 
     /* Grid header cell */
@@ -620,6 +703,12 @@
     .packages-grid {
       grid-template-columns: 1.5fr 1.5fr 1fr 1fr 0.8fr 2fr; /* 6 columns - matches headers */
       gap: 0; /* No gaps to simulate table */
+      min-width: 800px; /* Ensure minimum width for proper column alignment */
+    }
+
+    /* Packages grid with 5 columns when canEdit is false (read-only mode) */
+    .packages-grid.readonly {
+      grid-template-columns: 1.5fr 1.5fr 1fr 1fr 0.8fr; /* 5 columns when readonly */
     }
 
     /* Package grid item - display: contents makes it transparent */
@@ -722,6 +811,12 @@
       display: grid !important;
       grid-template-columns: 1.5fr 1.5fr 1fr 1fr 0.8fr 2fr !important;
       gap: 0 !important;
+      min-width: 800px !important; /* Ensure minimum width for proper column alignment */
+    }
+
+    /* Grid with 5 columns when readonly */
+    .packages-grid.readonly {
+      grid-template-columns: 1.5fr 1.5fr 1fr 1fr 0.8fr !important;
     }
   }
 

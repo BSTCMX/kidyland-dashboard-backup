@@ -7,6 +7,7 @@
   import { goto } from "$app/navigation";
   import { user, hasAccessSecure } from "$lib/stores/auth";
   import { fetchDayStatus, dayOperationsStore } from "$lib/stores/day-operations";
+  import { canExecuteDayOperations } from "$lib/utils/permissions";
   import DayCloseForm from "$lib/components/forms/DayCloseForm.svelte";
 
   onMount(() => {
@@ -21,6 +22,8 @@
       fetchDayStatus($user.sucursal_id);
     }
   });
+
+  $: canExecute = canExecuteDayOperations($user?.role);
 
   function handleSuccess() {
     // Redirect to kidibar dashboard after successful day close
@@ -40,6 +43,8 @@
 
   <DayCloseForm
     sucursalId={$user?.sucursal_id || ""}
+    readOnly={!canExecute}
+    module="kidibar"
     on:success={handleSuccess}
   />
 </div>

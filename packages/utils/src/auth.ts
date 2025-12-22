@@ -65,55 +65,114 @@ export async function login(
   password: string,
   onSuccess?: (user: User | null) => void | Promise<void>
 ): Promise<void> {
-  // Use same logic as api.ts for consistency
-  const env = typeof import.meta !== 'undefined' && (import.meta as any).env;
+  // Clean Architecture: Use runtime detection for environment
+  // Same pattern as api-config.ts for consistency
   let apiUrl: string;
   
-  // 1. Explicit override via env variable (highest priority)
-  if (env?.VITE_API_URL) {
-    apiUrl = env.VITE_API_URL;
-  } else if (typeof window !== 'undefined' && window.location) {
-    // 2. In development mode: use backend port 8000
-    if (env?.MODE === 'development' || env?.DEV) {
-      apiUrl = "http://localhost:8000";
+  try {
+    // 1. Explicit override via env variable (highest priority)
+    if (import.meta.env.VITE_API_URL) {
+      apiUrl = import.meta.env.VITE_API_URL;
+    } else if (typeof window !== 'undefined' && window.location) {
+      // 2. Runtime detection: check hostname instead of build-time env vars
+      // This ensures correct behavior in production builds
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        // In development (localhost): use backend port 8000
+        apiUrl = "http://localhost:8000";
+      } else {
+        // In production: use same origin
+        apiUrl = window.location.origin;
+      }
     } else {
-      // In production: use same origin
-      apiUrl = window.location.origin;
+      // 3. Fallback for SSR or non-browser contexts
+      // Use build-time detection for SSR context
+      if (import.meta.env.MODE === 'production' || import.meta.env.PROD) {
+        apiUrl = "";
+      } else {
+        apiUrl = "http://localhost:8000";
+      }
     }
-  } else {
-    // 3. Fallback for SSR or non-browser contexts
-    apiUrl = "http://localhost:8000";
-  }
-  
-  const res = await fetch(`${apiUrl}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password })
-  });
-  
-  // Handle 401 (unauthorized) - token expired or invalid
-  if (res.status === 401) {
-    logout();
-    if (browser) {
-      goto("/login");
+    
+    // Validate apiUrl before making request
+    if (!apiUrl || typeof apiUrl !== 'string') {
+      const error = new Error("Invalid API URL configuration");
+      if (import.meta.env.DEV) {
+        console.error("[Login] Invalid API URL:", { apiUrl, env: import.meta.env });
+      }
+      throw error;
     }
-    throw new Error("Invalid credentials");
-  }
+    
+    // Log in development for debugging
+    if (import.meta.env.DEV) {
+      console.debug("[Login] Attempting login:", { 
+        username, 
+        apiUrl: `${apiUrl}/auth/login`,
+        mode: import.meta.env.MODE 
+      });
+      console.log("[Login] Full URL:", `${apiUrl}/auth/login`);
+    }
+    
+    const res = await fetch(`${apiUrl}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password })
+    });
   
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({ detail: "Login failed" }));
-    throw new Error(data.detail || "Login failed");
-  }
-  
-  const data = await res.json();
-  
-  // Set token and user
-  token.set(data.access_token);
-  user.set(data.user);
-  
-  // Call onSuccess callback if provided
-  if (onSuccess) {
-    await onSuccess(data.user);
+    // Handle 401 (unauthorized) - token expired or invalid
+    if (res.status === 401) {
+      if (import.meta.env.DEV) {
+        console.error("[Login] 401 Unauthorized - Invalid credentials");
+      }
+      logout();
+      if (browser) {
+        goto("/login");
+      }
+      throw new Error("Invalid credentials");
+    }
+    
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({ detail: "Login failed" }));
+      const errorMessage = data.detail || `Login failed with status ${res.status}`;
+      if (import.meta.env.DEV) {
+        console.error("[Login] Request failed:", { status: res.status, detail: data.detail });
+      }
+      throw new Error(errorMessage);
+    }
+    
+    const data = await res.json();
+    
+    // Validate response data
+    if (!data.access_token || !data.user) {
+      const error = new Error("Invalid login response - missing token or user data");
+      if (import.meta.env.DEV) {
+        console.error("[Login] Invalid response:", data);
+      }
+      throw error;
+    }
+    
+    // Set token and user
+    token.set(data.access_token);
+    user.set(data.user);
+    
+    if (import.meta.env.DEV) {
+      console.debug("[Login] Success:", { username: data.user.username, role: data.user.role });
+    }
+    
+    // Call onSuccess callback if provided
+    if (onSuccess) {
+      await onSuccess(data.user);
+    }
+  } catch (error: any) {
+    // Re-throw with better error message if it's a network error
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      const networkError = new Error("Network error - unable to reach server. Please check your connection.");
+      if (import.meta.env.DEV) {
+        console.error("[Login] Network error:", error);
+      }
+      throw networkError;
+    }
+    // Re-throw other errors as-is
+    throw error;
   }
 }
 
@@ -299,7 +358,10 @@ export function getUsernameFromToken(): string | null {
     const parts = currentToken.split(".");
     if (parts.length !== 3) return null;
     
-    const payload = JSON.parse(atob(parts[1]));
+    const encodedPayload = parts[1];
+    if (!encodedPayload) return null;
+    
+    const payload = JSON.parse(atob(encodedPayload));
     return payload.sub || null;
   } catch {
     return null;

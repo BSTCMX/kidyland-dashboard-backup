@@ -24,6 +24,20 @@ export const timersStore = writable<TimersState>({
 
 let wsConnection: ReturnType<typeof createTimerWebSocket> | null = null;
 
+/**
+ * Singleton WebSocket connection state object.
+ * 
+ * Encapsulates all WebSocket connection state in a single object to:
+ * - Prevent duplicate declarations
+ * - Improve code organization
+ * - Make state management more maintainable
+ * - Enable easy extension of state in the future
+ */
+const wsState = {
+  currentSucursalId: null as string | null,
+  connectionAttemptInProgress: false,
+};
+
 // Audio elements for alert sounds (one per alert type to support multiple simultaneous alerts)
 const alertAudioElements: Map<number, HTMLAudioElement> = new Map();
 
@@ -220,27 +234,61 @@ export async function fetchActiveTimers(sucursalId: string): Promise<void> {
 /**
  * Connect to timer WebSocket for real-time updates.
  * 
+ * Implements singleton pattern to prevent multiple connections:
+ * - Only one connection per sucursalId at a time
+ * - Automatically disconnects previous connection if sucursalId changes
+ * - Prevents duplicate connection attempts
+ * 
  * @param sucursalId - Sucursal ID to subscribe to
  * @param token - Authentication token (deprecated, token is obtained internally via getToken())
  */
 export function connectTimerWebSocket(sucursalId: string, token?: string): void {
-  // Disconnect existing connection if any
+  // Validate sucursalId
+  if (!sucursalId || sucursalId.trim() === "") {
+    console.error("[TimerStore] Cannot connect: invalid sucursalId");
+    return;
+  }
+
+  // If already connected to the same sucursal, do nothing
+  if (wsConnection && wsState.currentSucursalId === sucursalId && wsState.connectionAttemptInProgress === false) {
+    console.debug("[TimerStore] WebSocket already connected to sucursal:", sucursalId);
+    return;
+  }
+
+  // If connection attempt is in progress for same sucursal, wait
+  if (wsState.connectionAttemptInProgress && wsState.currentSucursalId === sucursalId) {
+    console.debug("[TimerStore] Connection attempt already in progress for sucursal:", sucursalId);
+    return;
+  }
+
+  // Disconnect existing connection if sucursal changed or connection exists
   if (wsConnection) {
+    console.debug(
+      "[TimerStore] Disconnecting existing connection",
+      wsState.currentSucursalId !== sucursalId ? `(sucursal changed: ${wsState.currentSucursalId} -> ${sucursalId})` : ""
+    );
     try {
       // Disconnect will handle different connection states gracefully
       wsConnection.disconnect();
     } catch (error) {
       // Ignore errors during cleanup (connection may already be closing)
-      console.debug("Error during WebSocket cleanup (ignored):", error);
+      console.debug("[TimerStore] Error during WebSocket cleanup (ignored):", error);
     }
     wsConnection = null;
+    wsState.currentSucursalId = null;
   }
+
+  // Set connection attempt flag
+  wsState.connectionAttemptInProgress = true;
+  wsState.currentSucursalId = sucursalId;
 
   // createTimerWebSocket obtains token internally via getToken() from auth store
   // Token parameter is kept for backward compatibility but not used
   wsConnection = createTimerWebSocket(sucursalId, {
     onOpen: () => {
+      wsState.connectionAttemptInProgress = false;
       timersStore.update((state) => ({ ...state, wsConnected: true }));
+      console.debug("[TimerStore] WebSocket connected successfully to sucursal:", sucursalId);
     },
     onMessage: (data: any) => {
       if (data.type === "timers_update") {
@@ -413,7 +461,9 @@ export function connectTimerWebSocket(sucursalId: string, token?: string): void 
       }
     },
     onError: (error: Event) => {
+      wsState.connectionAttemptInProgress = false;
       const errorMessage = error instanceof Error ? error.message : "Error en WebSocket";
+      console.error("[TimerStore] WebSocket error:", errorMessage);
       timersStore.update((state) => ({
         ...state,
         error: errorMessage,
@@ -421,6 +471,8 @@ export function connectTimerWebSocket(sucursalId: string, token?: string): void 
       }));
     },
     onClose: () => {
+      wsState.connectionAttemptInProgress = false;
+      console.debug("[TimerStore] WebSocket disconnected");
       timersStore.update((state) => ({ ...state, wsConnected: false }));
     },
   });
@@ -457,18 +509,29 @@ function cleanupOldLocalUpdates(cooldownMs: number = 10000): void {
 
 /**
  * Disconnect from timer WebSocket.
+ * 
+ * Implements proper cleanup:
+ * - Disconnects WebSocket connection
+ * - Resets singleton state
+ * - Cleans up resources (sounds, timestamps)
  */
 export function disconnectTimerWebSocket(): void {
   if (wsConnection) {
+    console.debug("[TimerStore] Disconnecting WebSocket");
     try {
       // Disconnect will handle state transitions properly via state machine
       wsConnection.disconnect();
     } catch (error) {
       // Ignore errors during disconnect (connection may already be closed)
-      console.debug("Error disconnecting WebSocket (ignored):", error);
+      console.debug("[TimerStore] Error disconnecting WebSocket (ignored):", error);
     }
     wsConnection = null;
   }
+  
+  // Reset singleton state
+  wsState.currentSucursalId = null;
+  wsState.connectionAttemptInProgress = false;
+  
   // Stop all alert sounds
   stopAllAlertSounds();
   // Clean up old local update timestamps

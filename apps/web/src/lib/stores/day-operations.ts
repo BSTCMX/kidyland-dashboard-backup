@@ -155,12 +155,14 @@ export interface DayClosePreview {
  * Preview day close calculations without actually closing the day.
  * 
  * @param sucursalId - Sucursal ID to preview day close for
+ * @param module - Optional module context: 'kidibar' to filter only product sales, 'recepcion' for all sales
  * @returns Preview data with expected totals and breakdown
  */
-export async function previewDayClose(sucursalId: string): Promise<DayClosePreview> {
+export async function previewDayClose(sucursalId: string, module?: "kidibar" | "recepcion"): Promise<DayClosePreview> {
   try {
+    const moduleParam = module ? `&module=${module}` : "";
     const preview = await get<DayClosePreview>(
-      `/operations/day/close/preview?sucursal_id=${sucursalId}`
+      `/operations/day/close/preview?sucursal_id=${sucursalId}${moduleParam}`
     );
     return preview;
   } catch (error: any) {

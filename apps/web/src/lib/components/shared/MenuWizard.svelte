@@ -24,6 +24,7 @@
   import { getItemsForPageProportional } from "$lib/utils/canvas-layout";
   import type { DrawPageFunction } from "$lib/utils/video-export";
   import { exportToPDFHighQuality, exportToPDFMultiPage, exportToMP4 } from "$lib/utils/video-export";
+  import { configureCanvasQuality } from "$lib/utils/canvas-quality";
   import WizardStep from "./WizardStep.svelte";
   import BackgroundImageSelector from "./BackgroundImageSelector.svelte";
   import LayoutStyleSelector from "./LayoutStyleSelector.svelte";
@@ -438,12 +439,17 @@
     // Pre-load background image once (will be reused for all pages)
     let backgroundImageElementPromise: Promise<HTMLImageElement | null> | null = null;
 
-    return async (canvas: HTMLCanvasElement, pageIndex: number, totalPages: number) => {
+    return async (canvas: HTMLCanvasElement, pageIndex: number, totalPages: number, highResolution: boolean = false) => {
       // Get canvas context
       const ctx = canvas.getContext("2d");
       if (!ctx) {
         throw new Error("Failed to get canvas context");
       }
+
+      // Configure canvas for optimal rendering quality
+      // This ensures sharp text and graphics in PDF exports
+      // FASE 2: Quality settings are always applied
+      configureCanvasQuality(ctx);
 
       // Ensure background image is loaded (only load once, reuse for all pages)
       if (!backgroundImageElementPromise) {

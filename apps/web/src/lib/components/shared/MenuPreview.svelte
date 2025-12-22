@@ -12,6 +12,8 @@
   import { calculateAutoLayout } from "$lib/utils/layout-helpers";
   import { getItemsForPage } from "$lib/utils/canvas-layout";
   import { loadFFmpeg } from "$lib/utils/video-export";
+  import { configureCanvasQuality } from "$lib/utils/canvas-quality";
+  import { layoutEditorStore } from "$lib/stores/layout-editor";
 
   export let backgroundImage: BackgroundImage | null = null;
   export let layoutStyle: LayoutStyle | null = null;
@@ -56,10 +58,55 @@
     loadBackgroundImage(backgroundImage.imagePath);
   }
 
-  // Calculate pages when items change
+  // Calculate pages when items, dimensions, or layout config change
+  // CRITICAL: Include layoutEditorStore in reactive dependencies to recalculate when manual config changes
+  // Use a variable to track last calculated values to avoid excessive logging
+  let lastPaginationState: {
+    pages: number;
+    totalItems: number;
+    totalHeight: number;
+    layoutMode: string;
+  } | null = null;
+
   $: if (width && height && (services.length > 0 || products.length > 0 || packages.length > 0)) {
     const hasBg = backgroundImageElement && backgroundImageLoaded;
-    totalPages = calculateMenuPages(width, height, services, products, packages, hasBg || false);
+    const layoutConfig = $layoutEditorStore; // Subscribe to store changes
+    
+    // Recalculate pages (this will use current manualConfig if mode is manual)
+    const calculatedPages = calculateMenuPages(width, height, services, products, packages, hasBg || false);
+    
+    // Log pagination calculation in dev mode for debugging (only when result changes)
+    if (import.meta.env?.DEV) {
+      const totalItems = services.length + products.length + packages.length;
+      const totalHeight = calculateTotalContentHeight(width, services, products, packages);
+      const availableHeight = height - (hasBg ? 0 : 160) - 80;
+      
+      const shouldLog = !lastPaginationState ||
+        lastPaginationState.pages !== calculatedPages ||
+        lastPaginationState.totalItems !== totalItems ||
+        lastPaginationState.totalHeight !== totalHeight ||
+        lastPaginationState.layoutMode !== layoutConfig.mode;
+      
+      if (shouldLog) {
+        console.log("[MenuPreview] Pagination calculation:", {
+          totalItems,
+          totalHeight,
+          availableHeight,
+          calculatedPages,
+          layoutMode: layoutConfig.mode,
+          manualConfig: layoutConfig.mode === "manual" ? layoutConfig.manualConfig : null,
+        });
+        lastPaginationState = {
+          pages: calculatedPages,
+          totalItems,
+          totalHeight,
+          layoutMode: layoutConfig.mode,
+        };
+      }
+    }
+    
+    totalPages = calculatedPages;
+    
     // Reset to first page if current page is out of bounds
     if (currentPage >= totalPages) {
       currentPage = 0;
@@ -138,6 +185,12 @@
       canvas.width = width;
       canvas.height = height;
       ctx = canvas.getContext("2d");
+      
+      // Configure canvas for optimal rendering quality
+      // This ensures sharp text and graphics, especially important for exports
+      if (ctx) {
+        configureCanvasQuality(ctx);
+      }
       
       if (autoPlay) {
         startPreview();

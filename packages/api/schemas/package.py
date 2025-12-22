@@ -89,6 +89,8 @@ class PackageBase(BaseModel):
     price_cents: int
     included_items: List[PackageItem] = []
     active: bool = True
+    sucursal_id: Optional[UUID] = None  # Kept for backward compatibility
+    sucursales_ids: Optional[list[str]] = []  # New: support for multiple sucursales
 
     class Config:
         from_attributes = True
@@ -96,7 +98,8 @@ class PackageBase(BaseModel):
 
 class PackageCreate(PackageBase):
     """Schema for creating a new package."""
-    sucursal_id: UUID
+    sucursales_ids: list[str]  # Required: at least one sucursal
+    sucursal_id: Optional[UUID] = None  # Optional: will be derived from sucursales_ids if not provided
 
 
 class PackageUpdate(BaseModel):
@@ -106,6 +109,8 @@ class PackageUpdate(BaseModel):
     price_cents: Optional[int] = None
     included_items: Optional[List[PackageItem]] = None
     active: Optional[bool] = None
+    sucursales_ids: Optional[list[str]] = None
+    sucursal_id: Optional[UUID] = None  # Optional: for backward compatibility
 
     class Config:
         from_attributes = True
@@ -114,7 +119,8 @@ class PackageUpdate(BaseModel):
 class PackageRead(PackageBase):
     """Schema for reading package data."""
     id: UUID
-    sucursal_id: UUID
+    sucursal_id: UUID  # Kept for backward compatibility
+    sucursales_ids: Optional[list[str]] = []  # New: support for multiple sucursales
     created_at: datetime
     updated_at: datetime
 

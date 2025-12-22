@@ -1,6 +1,9 @@
 <script lang="ts">
   /**
    * ProductList component - Displays products in a table with CRUD operations.
+   * 
+   * @param module - Module context: "admin" (default) or "kidibar"
+   * @param filterByType - If true, filter products by type (only for kidibar module)
    */
   import { onMount } from "svelte";
   import { Button } from "@kidyland/ui";
@@ -26,11 +29,19 @@
   } from "lucide-svelte";
   import Badge from "$lib/components/shared/Badge.svelte";
 
+  // Props
+  export let module: "admin" | "kidibar" = "admin";
+  export let hideCreateEdit: boolean = false;
+
   // Reactive stores
   $: currentUser = $user;
-  $: adminPerms = currentUser ? getModulePermissions(currentUser.role, "admin") : null;
-  $: canViewProducts = adminPerms?.canAccess ?? false;
-  $: canEditProducts = adminPerms?.canEdit ?? false;
+  $: modulePerms = currentUser ? getModulePermissions(currentUser.role, module) : null;
+  $: canViewProducts = modulePerms?.canAccess ?? false;
+  $: canEditProducts = modulePerms?.canEdit ?? false;
+  $: showCreateEditButtons = canEditProducts && !hideCreateEdit;
+  
+  // Products endpoint already returns only products (not services), so no filtering needed
+  $: displayedProducts = $productsAdminStore.list;
 
   // Local state
   let selectedProduct: Product | null = null;
@@ -90,7 +101,7 @@
         Gestión de Productos
       </h1>
       
-      {#if canEditProducts}
+      {#if showCreateEditButtons}
         <div class="create-product-button-wrapper">
           <Button 
             variant="brutalist"
@@ -109,10 +120,10 @@
     <!-- Loading state -->
     {#if $productsAdminStore.loading}
       <LoadingSpinner message="Cargando productos..." />
-    {:else if $productsAdminStore.list.length === 0 && canViewProducts}
+    {:else if displayedProducts.length === 0 && canViewProducts}
       <div class="empty-state">
         <p>No hay productos registrados</p>
-        {#if canEditProducts}
+        {#if showCreateEditButtons}
           <Button variant="brutalist" on:click={() => (showCreateModal = true)}>
             <Plus size={18} strokeWidth={1.5} style="display: inline-block; vertical-align: middle; margin-right: 6px;" />
             Crear Primer Producto
@@ -128,21 +139,21 @@
       <!-- Desktop: Grid layout, Mobile: Cards layout -->
       <div class="products-grid-container">
         <!-- Desktop Grid Headers (hidden on mobile) -->
-        <div class="grid-headers" class:readonly={!canEditProducts}>
+        <div class="grid-headers" class:readonly={!showCreateEditButtons}>
           <div class="grid-header">Nombre</div>
           <div class="grid-header">Precio</div>
           <div class="grid-header">Stock</div>
           <div class="grid-header">Umbral Alerta</div>
           <div class="grid-header">Para Paquete</div>
           <div class="grid-header">Estado</div>
-          {#if canEditProducts}
+          {#if showCreateEditButtons}
             <div class="grid-header">Acciones</div>
           {/if}
         </div>
 
         <!-- Products Grid Items -->
-        <div class="products-grid" class:readonly={!canEditProducts}>
-          {#each $productsAdminStore.list as product (product.id)}
+        <div class="products-grid" class:readonly={!showCreateEditButtons}>
+          {#each displayedProducts as product (product.id)}
             <div class="product-grid-item">
               <!-- Nombre -->
               <div class="grid-cell name-cell">
@@ -177,7 +188,7 @@
               </div>
               
               <!-- Acciones -->
-              {#if canEditProducts}
+              {#if showCreateEditButtons}
                 <div class="grid-cell actions-cell">
                   <div class="actions-group">
                     <Button
@@ -210,7 +221,7 @@
 
       <!-- Products cards (Mobile - Enhanced) -->
       <div class="products-cards">
-        {#each $productsAdminStore.list as product (product.id)}
+        {#each displayedProducts as product (product.id)}
           <div class="product-card">
             <div class="product-card-header">
               <h3 class="product-card-title">{product.name}</h3>
@@ -240,7 +251,7 @@
                 </span>
               </div>
             </div>
-            {#if canEditProducts}
+            {#if showCreateEditButtons}
               <div class="product-card-actions">
                 <Button
                   variant="brutalist"
@@ -272,7 +283,7 @@
 </div>
 
 <!-- Create Modal -->
-{#if showCreateModal && canEditProducts}
+{#if showCreateModal && showCreateEditButtons}
   <ProductForm
     open={showCreateModal}
     product={null}
@@ -283,7 +294,7 @@
 {/if}
 
 <!-- Edit Modal -->
-{#if showEditModal && selectedProduct && canEditProducts}
+{#if showEditModal && selectedProduct && showCreateEditButtons}
   <ProductForm
     open={showEditModal}
     product={selectedProduct}

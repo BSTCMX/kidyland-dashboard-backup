@@ -13,11 +13,12 @@
   import type { Product } from "@kidyland/shared/types";
 
   export let packages: PackageType[] = [];
-  export let products: Product[] = []; // For displaying product names in included_items
+  export let products: Product[] = []; // For displaying product/service names in included_items (can be products or services)
   export let selectedItems: Array<{ package: PackageType; quantity: number }> = [];
   export let error: string | null = null;
 
-  // Product name mapping for displaying included items
+  // Product/service name mapping for displaying included items
+  // Products array can contain either products or services depending on context
   $: productMap = new Map(
     products.map((p: { id: string; name: string }) => [p.id, p.name])
   );
@@ -112,6 +113,12 @@
     return productName || `Producto ID: ${productId.slice(0, 8)}...`;
   }
 
+  function getServiceName(serviceId: string | undefined): string {
+    if (!serviceId) return "Servicio desconocido";
+    const serviceName = productMap.get(serviceId); // Reuse productMap for services
+    return serviceName || `Servicio ID: ${serviceId.slice(0, 8)}...`;
+  }
+
   function handleQuantityInput(packageId: string, event: Event) {
     const target = event.target as HTMLInputElement;
     const value = parseInt(target.value) || 1;
@@ -187,17 +194,29 @@
             </div>
             {#if pkg.included_items && pkg.included_items.length > 0}
               <div class="package-items-preview">
-                <span class="items-label">Productos incluidos:</span>
-                <ul class="items-list">
-                  {#each pkg.included_items.filter((item) => item.product_id) as item}
-                    <li class="item-entry">
-                      <span class="item-name">{getProductName(item.product_id)}</span>
-                      {#if item.quantity && item.quantity > 1}
-                        <span class="item-quantity">(x{item.quantity})</span>
-                      {/if}
-                    </li>
-                  {/each}
-                </ul>
+                {#if pkg.included_items.some((item) => item.product_id)}
+                  <span class="items-label">Productos incluidos:</span>
+                  <ul class="items-list">
+                    {#each pkg.included_items.filter((item) => item.product_id) as item}
+                      <li class="item-entry">
+                        <span class="item-name">{getProductName(item.product_id)}</span>
+                        {#if item.quantity && item.quantity > 1}
+                          <span class="item-quantity">(x{item.quantity})</span>
+                        {/if}
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+                {#if pkg.included_items.some((item) => item.service_id)}
+                  <span class="items-label">Servicios incluidos:</span>
+                  <ul class="items-list">
+                    {#each pkg.included_items.filter((item) => item.service_id) as item}
+                      <li class="item-entry">
+                        <span class="item-name">{getServiceName(item.service_id)}</span>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
               </div>
             {/if}
           </div>

@@ -5,8 +5,10 @@
    * Provides access to day close operations and arqueos history.
    * Reuses the same structure as recepcion/reportes.
    */
+  import { page } from "$app/stores";
   import { user, hasAccess } from "$lib/stores/auth";
   import { getModulePermissions } from "$lib/utils/permissions";
+  import { preserveQueryParams } from "$lib/utils/navigation";
   import { 
     Moon, 
     FileText 
@@ -39,7 +41,7 @@
     {/if}
 
     {#if kidibarPerms?.canAccess}
-      <a href="/kidibar/arqueos" class="report-card">
+      <a href={preserveQueryParams("/kidibar/arqueos", $page.url)} class="report-card">
         <div class="card-icon">
           <FileText size={32} strokeWidth={1.5} />
         </div>

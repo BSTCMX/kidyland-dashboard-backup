@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/operations", tags=["operations"])
 
 
-@router.post("/day/start", response_model=Dict[str, Any], dependencies=[Depends(require_role(["recepcion", "kidibar", "super_admin", "admin_viewer"]))])
+@router.post("/day/start", response_model=Dict[str, Any], dependencies=[Depends(require_role(["kidibar", "recepcion", "super_admin"]))])
 async def start_day(
     start_data: DayStartCreate,
     db: AsyncSession = Depends(get_db),
@@ -33,7 +33,8 @@ async def start_day(
     """
     Start a new business day for a sucursal.
     
-    Security: Only recepcion, kidibar, super_admin, and admin_viewer roles can start days.
+    Security: Only kidibar, recepcion, and super_admin roles can start days.
+    Other roles (admin_viewer, monitor) can view but not execute.
     
     Validates that no other day is currently active for the sucursal.
     Creates a new DayStart record with is_active=True.
@@ -53,7 +54,8 @@ async def start_day(
         # Validate that user has access to the sucursal
         if current_user.sucursal_id and str(current_user.sucursal_id) != str(start_data.sucursal_id):
             # Allow if user is super_admin or admin_viewer
-            if str(current_user.role) not in ["super_admin", "admin_viewer"]:
+            user_role_value = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+            if user_role_value not in ["super_admin", "admin_viewer"]:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="No tienes permisos para iniciar el día en esta sucursal."
@@ -119,7 +121,7 @@ async def start_day(
         )
 
 
-@router.post("/day/close", response_model=Dict[str, Any], dependencies=[Depends(require_role(["recepcion", "kidibar", "super_admin", "admin_viewer"]))])
+@router.post("/day/close", response_model=Dict[str, Any], dependencies=[Depends(require_role(["kidibar", "recepcion", "super_admin"]))])
 async def close_day(
     close_data: DayCloseCreate,
     db: AsyncSession = Depends(get_db),
@@ -128,7 +130,8 @@ async def close_day(
     """
     Close the current business day for a sucursal.
     
-    Security: Only recepcion, kidibar, super_admin, and admin_viewer roles can close days.
+    Security: Only kidibar, recepcion, and super_admin roles can close days.
+    Other roles (admin_viewer, monitor) can view but not execute.
     
     Validates that a day is currently active for the sucursal.
     Creates a DayClose record and sets the active DayStart to is_active=False.
@@ -148,7 +151,8 @@ async def close_day(
         # Validate that user has access to the sucursal
         if current_user.sucursal_id and str(current_user.sucursal_id) != str(close_data.sucursal_id):
             # Allow if user is super_admin or admin_viewer
-            if str(current_user.role) not in ["super_admin", "admin_viewer"]:
+            user_role_value = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+            if user_role_value not in ["super_admin", "admin_viewer"]:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="No tienes permisos para cerrar el día en esta sucursal."
@@ -210,9 +214,10 @@ async def close_day(
         )
 
 
-@router.get("/day/close/preview", response_model=PreviewDayCloseRead, dependencies=[Depends(require_role(["recepcion", "kidibar", "super_admin", "admin_viewer"]))])
+@router.get("/day/close/preview", response_model=PreviewDayCloseRead, dependencies=[Depends(require_role(["recepcion", "kidibar", "super_admin", "admin_viewer", "monitor"]))])
 async def preview_day_close(
     sucursal_id: str = Query(..., description="Sucursal ID to preview day close for"),
+    module: Optional[str] = Query(None, description="Module context: 'kidibar' to filter only product sales, 'recepcion' for all sales. If not provided, uses user role as fallback."),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> PreviewDayCloseRead:
@@ -222,24 +227,38 @@ async def preview_day_close(
     Returns the expected system total and breakdown that would be calculated
     if the day were closed right now.
     
-    Security: Only recepcion, kidibar, super_admin, and admin_viewer roles can preview day close.
+    Security: Only recepcion, kidibar, super_admin, admin_viewer, and monitor roles can preview day close.
     Users with sucursal_id are automatically filtered to their sucursal.
+    
+    The 'module' parameter determines which sales to include:
+    - 'kidibar': Only product and product package sales (for Kidibar context)
+    - 'recepcion' or None: All sales (default behavior)
+    If 'module' is not provided, the user's role is used as fallback.
     """
     try:
         # Validate that user has access to the sucursal
         if current_user.sucursal_id and str(current_user.sucursal_id) != sucursal_id:
-            if str(current_user.role) not in ["super_admin", "admin_viewer"]:
+            user_role_value = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+            if user_role_value not in ["super_admin", "admin_viewer"]:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="No tienes permisos para ver el preview del cierre de día de esta sucursal."
                 )
         
-        # Pass user role to filter preview calculation for KidiBar
-        user_role_value = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+        # Determine which role/context to use for filtering:
+        # 1. If module parameter is provided, use it (kidibar context)
+        # 2. Otherwise, use user role as fallback
+        if module == "kidibar":
+            # When accessing from Kidibar context, always filter to kidibar sales
+            filter_role = "kidibar"
+        else:
+            # Use user role as fallback (existing behavior)
+            filter_role = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+        
         preview_data = await DayCloseService.preview_day_close(
             db=db,
             sucursal_id=sucursal_id,
-            user_role=user_role_value
+            user_role=filter_role
         )
         return PreviewDayCloseRead.model_validate(preview_data)
     except ValueError as e:
@@ -284,7 +303,8 @@ async def get_day_status(
         # Validate that user has access to the sucursal
         if current_user.sucursal_id and str(current_user.sucursal_id) != sucursal_id:
             # Allow if user is super_admin or admin_viewer
-            if str(current_user.role) not in ["super_admin", "admin_viewer"]:
+            user_role_value = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+            if user_role_value not in ["super_admin", "admin_viewer"]:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="No tienes permisos para consultar el estado del día de esta sucursal."
@@ -408,7 +428,8 @@ async def list_day_closes(
         if target_sucursal_id and current_user.sucursal_id:
             if str(current_user.sucursal_id) != target_sucursal_id:
                 # Allow if user is super_admin or admin_viewer
-                if str(current_user.role) not in ["super_admin", "admin_viewer"]:
+                user_role_value = current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role)
+                if user_role_value not in ["super_admin", "admin_viewer"]:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="No tienes permisos para ver arqueos de esta sucursal."

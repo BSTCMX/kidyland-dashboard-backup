@@ -14,9 +14,14 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "declarationMap": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "paths": {
+      "@kidyland/shared/types": ["../shared/src/types.ts"],
+      "@kidyland/shared": ["../shared/src"]
+    }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "src/vite-env.d.ts"],
   "exclude": ["node_modules", "dist"]
 }
 

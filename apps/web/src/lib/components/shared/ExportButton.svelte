@@ -85,7 +85,7 @@
 
       // Build absolute URL using API base URL
       const apiUrl = getApiUrl();
-      const url = `${apiUrl}/reports/export/${exportType}?${params.toString()}`;
+      const url = `${apiUrl}/exports/${exportType}?${params.toString()}`;
       
       // Generate filename
       const dateStr = new Date().toISOString().split("T")[0].replace(/-/g, "");

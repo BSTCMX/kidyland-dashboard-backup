@@ -15,7 +15,7 @@
     setPageSize,
     setPage,
   } from "$lib/stores/sales-history";
-  import { user } from "$lib/stores/auth";
+  import { user, hasRole } from "$lib/stores/auth";
   import LoadingSpinner from "../admin/LoadingSpinner.svelte";
   import ErrorBanner from "../admin/ErrorBanner.svelte";
   import { FileText, RefreshCw, Eye, Printer } from "lucide-svelte";
@@ -32,8 +32,10 @@
   let loadingTicket = false;
 
   $: currentUser = $user;
+  $: isSuperAdmin = hasRole("super_admin");
   // Use prop sucursalId if provided, otherwise use current user's sucursal_id
   // This allows super_admin to specify sucursal_id via query params
+  // For super_admin, targetSucursalId can be undefined (backend will return all sales)
   $: targetSucursalId = sucursalId || currentUser?.sucursal_id || undefined;
   
   // No need to filter in frontend - backend handles all filtering
@@ -124,7 +126,10 @@
   $: gridColumns = visibleColumns.map(col => col.width).join(" ");
 
   onMount(() => {
-    if (targetSucursalId) {
+    // Allow fetch if:
+    // 1. targetSucursalId is provided (normal users or super_admin with selected sucursal)
+    // 2. User is super_admin and targetSucursalId is undefined (backend will return all sales)
+    if (targetSucursalId || isSuperAdmin) {
       // Determine tipo, package_type, and include_package_type based on saleType
       let tipo: string | undefined;
       let package_type_param: string | undefined;
@@ -152,6 +157,7 @@
       
       if (showTodayOnly) {
         // Pass tipo, package_type, and include_package_type to fetchTodaySales
+        // targetSucursalId can be undefined for super_admin (backend handles it)
         fetchTodaySales(
           targetSucursalId,
           tipo,
@@ -162,6 +168,7 @@
         );
       } else {
         // Initial load with pagination (page 1, skip=0)
+        // targetSucursalId can be undefined for super_admin (backend handles it)
         fetchSales(
           targetSucursalId,
           undefined,
@@ -292,7 +299,10 @@
   }
 
   async function handleFilterChange() {
-    if (targetSucursalId) {
+    // Allow filter change if:
+    // 1. targetSucursalId is provided (normal users or super_admin with selected sucursal)
+    // 2. User is super_admin and targetSucursalId is undefined (backend will return all sales)
+    if (targetSucursalId || isSuperAdmin) {
       // Determine tipo, package_type, and include_package_type based on saleType
       let tipo: string | undefined;
       let package_type: string | undefined;
@@ -322,7 +332,7 @@
         // Calculate skip from current page and pageSize for today's sales
         const currentSkip = ($salesHistoryStore.pagination.page - 1) * $salesHistoryStore.pagination.pageSize;
         await fetchTodaySales(
-          currentUser.sucursal_id,
+          targetSucursalId, // Use targetSucursalId (can be undefined for super_admin)
           tipo,
           currentSkip,
           $salesHistoryStore.pagination.pageSize,
@@ -334,7 +344,7 @@
         // Calculate skip from current page and pageSize
         const currentSkip = ($salesHistoryStore.pagination.page - 1) * $salesHistoryStore.pagination.pageSize;
         await fetchSales(
-          currentUser.sucursal_id,
+          targetSucursalId, // Use targetSucursalId (can be undefined for super_admin)
           undefined,
           undefined,
           tipo,

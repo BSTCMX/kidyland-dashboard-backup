@@ -26,6 +26,7 @@
   import PeriodSelector from "$lib/components/admin/reports/sales/PeriodSelector.svelte";
   import { fetchSalesTimeSeries, type TimeSeriesDataPoint } from "$lib/stores/reports";
   import type { GroupedDataPoint } from "$lib/utils/charts/chartHelpers";
+  import { createDebouncedReactive } from "$lib/utils/debounce";
 import CustomersSection from "$lib/components/admin/reports/customers/CustomersSection.svelte";
 import ArqueosSection from "$lib/components/admin/reports/arqueos/ArqueosSection.svelte";
 import InventorySection from "$lib/components/admin/reports/inventory/InventorySection.svelte";
@@ -199,9 +200,13 @@ import ForecastingSection from "$lib/components/admin/reports/forecasting/Foreca
     await refreshReports();
   });
 
-  // Reload time series when dates change
+  // Debounced version of loadTimeSeriesData to prevent excessive API calls
+  // Clean Architecture: Uses reusable debounce utility to prevent duplicate requests
+  const debouncedLoadTimeSeries = createDebouncedReactive(loadTimeSeriesData, 500);
+
+  // Reload time series when dates change (debounced to prevent multiple calls)
   $: if (startDate && endDate) {
-    loadTimeSeriesData();
+    debouncedLoadTimeSeries();
   }
 </script>
 
