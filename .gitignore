@@ -81,3 +81,5 @@ coverage/
 # Migration scripts (temporary)
 apply_migration*.py
 migrations/
+apps/web/vite.config.ts.timestamp-*.mjs
+*.pdf
