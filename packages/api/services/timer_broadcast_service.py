@@ -19,28 +19,65 @@ from database import AsyncSessionLocal
 logger = logging.getLogger(__name__)
 
 
-async def periodic_timer_broadcast_task(interval_seconds: int = 5):
+async def periodic_timer_broadcast_task(
+    interval_seconds: int = 30,
+    business_hours_start: int = 13,
+    business_hours_end: int = 22,
+    timezone_str: str = "America/Mexico_City"
+):
     """
-    Background task that periodically polls active timers and broadcasts updates via WebSocket.
+    Background task optimizado para broadcast de timers via WebSocket.
     
-    This task:
-    1. Polls every interval_seconds (default: 5 seconds)
-    2. Gets active sucursales with WebSocket connections
-    3. Queries active timers for each sucursal
-    4. Broadcasts timer updates to connected WebSocket clients
+    Optimizaciones:
+    - Intervalo aumentado a 30s (balance UX/costo)
+    - Solo ejecuta en horario laboral (configurable)
+    - Solo ejecuta si hay conexiones WebSocket activas
+    - Timezone-aware (horarios en CDMX)
     
     Args:
-        interval_seconds: Seconds between polling iterations (default: 5)
+        interval_seconds: Segundos entre polling (default: 30)
+        business_hours_start: Hora inicio horario laboral en CDMX (default: 1 PM)
+        business_hours_end: Hora fin horario laboral en CDMX (default: 10 PM)
+        timezone_str: Timezone para horario laboral (default: America/Mexico_City)
     """
+    import os
+    from datetime import datetime, timezone as dt_timezone
+    from zoneinfo import ZoneInfo
+    
+    # Obtener configuración de env vars (sin hardcodeo)
+    interval_seconds = int(os.getenv("TIMER_BROADCAST_INTERVAL", str(interval_seconds)))
+    business_hours_start = int(os.getenv("BUSINESS_HOURS_START", str(business_hours_start)))
+    business_hours_end = int(os.getenv("BUSINESS_HOURS_END", str(business_hours_end)))
+    timezone_str = os.getenv("BUSINESS_TIMEZONE", timezone_str)
+    
     logger.info(
-        f"Starting periodic timer broadcast task: interval={interval_seconds}s"
+        f"Starting periodic timer broadcast task: "
+        f"interval={interval_seconds}s, "
+        f"business_hours={business_hours_start}-{business_hours_end} {timezone_str}"
     )
     
     while True:
         try:
             await asyncio.sleep(interval_seconds)
             
-            # Get active sucursales with WebSocket connections
+            # OPTIMIZACIÓN 1: Verificar horario laboral en CDMX
+            now_utc = datetime.now(dt_timezone.utc)
+            now_local = now_utc.astimezone(ZoneInfo(timezone_str))
+            current_hour = now_local.hour
+            
+            if current_hour < business_hours_start or current_hour >= business_hours_end:
+                # Fuera de horario laboral, skip iteration
+                # Esto permite que la DB se suspenda fuera de horario
+                logger.debug(
+                    f"Outside business hours ({current_hour}:00), skipping broadcast",
+                    extra={
+                        "current_hour": current_hour,
+                        "business_hours": f"{business_hours_start}-{business_hours_end}"
+                    }
+                )
+                continue
+            
+            # OPTIMIZACIÓN 2: Solo ejecutar si hay conexiones WebSocket activas
             active_sucursales = list(manager.active_connections.keys())
             
             if not active_sucursales:

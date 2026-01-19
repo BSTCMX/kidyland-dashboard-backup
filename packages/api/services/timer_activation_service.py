@@ -113,26 +113,60 @@ class TimerActivationService:
             raise
 
 
-async def periodic_timer_activation_task(interval_seconds: int = 15):
+async def periodic_timer_activation_task(
+    interval_seconds: int = 60,
+    business_hours_start: int = 13,
+    business_hours_end: int = 22,
+    timezone_str: str = "America/Mexico_City"
+):
     """
-    Background task that periodically activates scheduled timers.
+    Background task optimizado para activación de timers programados.
     
-    This task:
-    1. Polls every interval_seconds (default: 15 seconds)
-    2. Queries scheduled timers from database
-    3. Activates timers that have passed their delay period
-    4. Creates history entries for audit trail
+    Optimizaciones:
+    - Intervalo aumentado a 60s (alineado con granularidad de minutos)
+    - Solo ejecuta en horario laboral (configurable)
+    - Timezone-aware (horarios en CDMX)
     
     Args:
-        interval_seconds: Seconds between activation checks (default: 15)
+        interval_seconds: Segundos entre checks (default: 60)
+        business_hours_start: Hora inicio horario laboral en CDMX (default: 1 PM)
+        business_hours_end: Hora fin horario laboral en CDMX (default: 10 PM)
+        timezone_str: Timezone para horario laboral (default: America/Mexico_City)
     """
+    import os
+    from zoneinfo import ZoneInfo
+    
+    # Obtener configuración de env vars (sin hardcodeo)
+    interval_seconds = int(os.getenv("TIMER_ACTIVATION_INTERVAL", str(interval_seconds)))
+    business_hours_start = int(os.getenv("BUSINESS_HOURS_START", str(business_hours_start)))
+    business_hours_end = int(os.getenv("BUSINESS_HOURS_END", str(business_hours_end)))
+    timezone_str = os.getenv("BUSINESS_TIMEZONE", timezone_str)
+    
     logger.info(
-        f"Starting periodic timer activation task: interval={interval_seconds}s"
+        f"Starting periodic timer activation task: "
+        f"interval={interval_seconds}s, "
+        f"business_hours={business_hours_start}-{business_hours_end} {timezone_str}"
     )
     
     while True:
         try:
             await asyncio.sleep(interval_seconds)
+            
+            # OPTIMIZACIÓN: Verificar horario laboral en CDMX
+            now_utc = datetime.now(timezone.utc)
+            now_local = now_utc.astimezone(ZoneInfo(timezone_str))
+            current_hour = now_local.hour
+            
+            if current_hour < business_hours_start or current_hour >= business_hours_end:
+                # Fuera de horario laboral, skip iteration
+                logger.debug(
+                    f"Outside business hours ({current_hour}:00), skipping activation",
+                    extra={
+                        "current_hour": current_hour,
+                        "business_hours": f"{business_hours_start}-{business_hours_end}"
+                    }
+                )
+                continue
             
             # Process scheduled timers
             async with AsyncSessionLocal() as db:

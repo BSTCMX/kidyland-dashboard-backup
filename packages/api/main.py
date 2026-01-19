@@ -242,35 +242,54 @@ app.include_router(ws_timers.router)
 
 
 @app.get("/health")
-async def health_check(db = Depends(get_db)):
+async def health_check():
     """
-    Health check endpoint with database connectivity verification.
+    Liveness probe - Verifica que el proceso está corriendo.
+    NO consulta la base de datos para evitar consumo de compute hours.
+    Usado por Fly.io health checks cada 30 segundos.
     
     Returns:
-        - 200: All systems healthy (API + DB)
-        - 503: Service unhealthy (DB connection failed)
+        - 200: Process is alive
+    """
+    return {
+        "status": "healthy",
+        "service": "kidyland-api",
+        "type": "liveness"
+    }
+
+
+@app.get("/ready")
+async def readiness_check(db = Depends(get_db)):
+    """
+    Readiness probe - Verifica que el servicio está listo para recibir tráfico.
+    Incluye verificación de base de datos y otros servicios críticos.
+    Usado para validación manual, CI/CD, o debugging.
+    
+    Returns:
+        - 200: Service ready (API + DB)
+        - 503: Service not ready (DB connection failed)
     """
     from sqlalchemy import text
     
     try:
         # Simple query to verify database connectivity
-        # Using text() with no parameters is safe here (static query)
         result = await db.execute(text("SELECT 1"))
         result.scalar_one()
         
         return {
-            "status": "healthy",
+            "status": "ready",
             "service": "kidyland-api",
+            "type": "readiness",
             "database": "connected"
         }
     except Exception as e:
-        logger.error(f"Health check failed - database connection error: {e}", exc_info=True)
-        # Return JSONResponse for error case to set proper status code
+        logger.error(f"Readiness check failed - database connection error: {e}", exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={
-                "status": "unhealthy",
+                "status": "not_ready",
                 "service": "kidyland-api",
+                "type": "readiness",
                 "database": "disconnected",
                 "error": "Database connection failed"
             },

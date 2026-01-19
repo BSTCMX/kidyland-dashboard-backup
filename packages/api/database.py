@@ -60,10 +60,14 @@ if ssl_required:
         ssl_context.verify_mode = ssl.CERT_NONE
     connect_args["ssl"] = ssl_context
 
-# Create async engine with connection pooling
+# Create async engine with optimized connection pooling for Neon scale to zero
 engine = create_async_engine(
     async_database_url,
-    pool_pre_ping=True,
+    pool_pre_ping=True,  # Validate connections before use
+    pool_size=2,  # Reduced from default 5 to minimize idle connections
+    max_overflow=3,  # Maximum 5 total connections (2 + 3)
+    pool_recycle=1800,  # Recycle connections every 30 minutes to allow scale to zero
+    pool_timeout=30,  # Timeout after 30 seconds when getting connection from pool
     echo=False,  # Set to True for SQL query logging in development
     connect_args=connect_args if connect_args else {}
 )
