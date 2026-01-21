@@ -8,23 +8,25 @@
   import { onMount } from "svelte";
   import { notificationsStore, removeNotification, type Notification } from "$lib/stores/notifications";
   import { Button } from "@kidyland/ui";
+  import { CheckCircle, XCircle, AlertTriangle, Info } from "lucide-svelte";
+  import type { ComponentType } from "svelte";
 
   let containerRef: HTMLDivElement;
 
   $: notifications = $notificationsStore.list;
 
-  function getIcon(type: Notification["type"]): string {
+  function getIconComponent(type: Notification["type"]): ComponentType {
     switch (type) {
       case "success":
-        return "✅";
+        return CheckCircle;
       case "error":
-        return "❌";
+        return XCircle;
       case "warning":
-        return "⚠️";
+        return AlertTriangle;
       case "info":
-        return "ℹ️";
+        return Info;
       default:
-        return "ℹ️";
+        return Info;
     }
   }
 
@@ -53,7 +55,9 @@
           aria-live={notification.type === "error" ? "assertive" : "polite"}
       >
         <div class="toast-content">
-          <div class="toast-icon">{getIcon(notification.type)}</div>
+          <div class="toast-icon">
+            <svelte:component this={getIconComponent(notification.type)} size={20} />
+          </div>
           <div class="toast-text">
             <div class="toast-title">{notification.title}</div>
             {#if notification.message}

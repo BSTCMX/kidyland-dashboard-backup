@@ -139,24 +139,35 @@ class TimerService:
         """
         Get active timers with calculated time_left in minutes.
         
+        Includes children array from Sale for multi-child timers.
+        
         Args:
             db: Database session
             sucursal_id: Optional sucursal ID to filter by
             
         Returns:
-            List of timer dictionaries with time_left calculated
+            List of timer dictionaries with time_left calculated and children info
         """
         timers = await TimerService.get_active_timers(db, sucursal_id)
         now = datetime.now(timezone.utc)
         
+        # Get all sale IDs to fetch children info
+        sale_ids = {timer.sale_id for timer in timers}
+        
+        # Fetch sales with children info (only if there are timers)
+        sales_map = {}
+        if sale_ids:
+            sales_query = select(Sale).where(Sale.id.in_(sale_ids))
+            sales_result = await db.execute(sales_query)
+            sales_map = {str(sale.id): sale for sale in sales_result.scalars().all()}
+        
         result = []
         for timer in timers:
-            time_left_minutes = 0
+            time_left_seconds = 0
             
-            # For scheduled timers, show the total duration (end_at - start_at)
+            # For scheduled timers, check if they should transition to active
             # For active/extended timers, show remaining time (end_at - now)
             if timer.status == "scheduled":
-                # Scheduled timer: show total duration that will be available when it starts
                 if timer.start_at and timer.end_at:
                     # Normalize both datetimes to UTC
                     start_at = timer.start_at
@@ -171,9 +182,23 @@ class TimerService:
                     else:
                         end_at = end_at.astimezone(timezone.utc)
                     
-                    # Calculate total duration: end_at - start_at
-                    delta = end_at - start_at
-                    time_left_minutes = max(0, int(delta.total_seconds() / 60))
+                    # Check if timer should transition to active (start_at has arrived)
+                    if now >= start_at:
+                        # Transition scheduled → active
+                        timer.status = "active"
+                        await db.commit()
+                        await db.refresh(timer)
+                        logger.info(
+                            f"Timer {timer.id} transitioned from scheduled to active",
+                            extra={"timer_id": str(timer.id), "child_name": timer.child_name}
+                        )
+                        # Calculate remaining time (end_at - now)
+                        delta = end_at - now
+                        time_left_seconds = max(0, int(delta.total_seconds()))
+                    else:
+                        # Still scheduled, show total duration (end_at - start_at)
+                        delta = end_at - start_at
+                        time_left_seconds = max(0, int(delta.total_seconds()))
             elif timer.end_at:
                 # Active/extended timer: show remaining time (end_at - now)
                 # Normalize timer.end_at to UTC if it's naive or timezone-aware
@@ -188,21 +213,26 @@ class TimerService:
                     end_at = end_at.astimezone(timezone.utc)
                 
                 delta = end_at - now
-                time_left_minutes = max(0, int(delta.total_seconds() / 60))
+                time_left_seconds = max(0, int(delta.total_seconds()))
             
             # Only include timers with time_left > 0 (exclude expired/finished timers)
             # This ensures that only truly active timers are returned
-            if time_left_minutes > 0:
+            if time_left_seconds > 0:
+                # Get children info from sale if available
+                sale = sales_map.get(str(timer.sale_id))
+                children = sale.children if sale and sale.children else None
+                
                 result.append({
                     "id": str(timer.id),
                     "sale_id": str(timer.sale_id),
                     "service_id": str(timer.service_id),
                     "child_name": timer.child_name,
                     "child_age": timer.child_age,
+                    "children": children,  # Include children array from sale
                     "status": timer.status,
                     "start_at": timer.start_at.isoformat() if timer.start_at else None,
                     "end_at": timer.end_at.isoformat() if timer.end_at else None,
-                    "time_left_minutes": time_left_minutes,
+                    "time_left_seconds": time_left_seconds,
                     "updated_at": timer.updated_at.isoformat() if timer.updated_at else None,  # Server timestamp for conflict resolution
                 })
         
@@ -229,8 +259,9 @@ class TimerService:
         
         result = []
         for timer_data in timers:
-            time_left = timer_data.get("time_left_minutes", 0)
-            if 0 < time_left <= minutes_before:
+            time_left_seconds = timer_data.get("time_left_seconds", 0)
+            time_left_minutes = time_left_seconds / 60
+            if 0 < time_left_minutes <= minutes_before:
                 result.append(timer_data)
         
         return result
