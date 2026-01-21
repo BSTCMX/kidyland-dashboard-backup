@@ -225,15 +225,15 @@
     align-items: center;
     gap: var(--spacing-md);
     margin-bottom: var(--spacing-xl);
-    flex-wrap: wrap;
+    position: relative;
   }
 
   .header-left {
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
-    flex-wrap: wrap;
     flex: 1;
+    min-width: 0;
   }
 
   .back-button {
@@ -273,6 +273,8 @@
     gap: var(--spacing-xs);
     box-shadow: 3px 3px 0px 0px rgba(0, 147, 247, 0.3);
     text-decoration: none;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .display-button:hover {
@@ -644,6 +646,18 @@
     font-weight: 500;
   }
 
+  /* Tablet: 769px - 1024px */
+  @media (max-width: 1024px) and (min-width: 769px) {
+    .page-header {
+      gap: var(--spacing-sm);
+    }
+
+    .display-button span {
+      display: none;
+    }
+  }
+
+  /* Móvil: < 768px */
   @media (max-width: 768px) {
     .timers-page {
       padding: var(--spacing-md);
@@ -658,6 +672,7 @@
     .header-left {
       flex-direction: column;
       align-items: stretch;
+      gap: var(--spacing-sm);
     }
 
     .display-button {
