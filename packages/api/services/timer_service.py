@@ -222,6 +222,10 @@ class TimerService:
                 sale = sales_map.get(str(timer.sale_id))
                 children = sale.children if sale and sale.children else None
                 
+                # Calculate time_left_minutes for alert detection and compatibility
+                # This field is required by TimerAlertService and other consumers
+                time_left_minutes = max(0, int(time_left_seconds / 60))
+                
                 result.append({
                     "id": str(timer.id),
                     "sale_id": str(timer.sale_id),
@@ -233,6 +237,7 @@ class TimerService:
                     "start_at": timer.start_at.isoformat() if timer.start_at else None,
                     "end_at": timer.end_at.isoformat() if timer.end_at else None,
                     "time_left_seconds": time_left_seconds,
+                    "time_left_minutes": time_left_minutes,  # Required for alert detection (TimerAlertService)
                     "updated_at": timer.updated_at.isoformat() if timer.updated_at else None,  # Server timestamp for conflict resolution
                 })
         

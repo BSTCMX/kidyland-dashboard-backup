@@ -6,7 +6,7 @@
  * - Tracks shown alerts to prevent duplicates
  * - Visibility-aware pausing
  * - Automatic recovery on reconnection
- *
+ * 
  * Clean Architecture: Uses getApiUrl() for dynamic API URL resolution.
  */
 
@@ -23,8 +23,8 @@ interface AlertPollingState {
   timeoutId: number | null;
   shownAlerts: Set<string>;
   errorCount: number;
-  consecutiveFailures: number;  // Track consecutive failures for degradation detection
-  degradedAt: number | null;    // Timestamp when system became degraded (for debug)
+  consecutiveFailures: number;
+  degradedAt: number | null;
 }
 
 type AlertData = {
@@ -50,12 +50,12 @@ export class AlertPollingService {
   private onError: ((error: Error) => void) | null = null;
   private apiBaseUrl: string;
   private sucursalId: string | null = null;
-  private lastSuccessfulData: AlertData[] | null = null;  // Fallback data for graceful degradation
+  private lastSuccessfulData: AlertData[] | null = null;
 
   constructor(config?: Partial<AlertPollingConfig>) {
     this.config = {
-      interval: 10000,      // 10 seconds
-      jitterRange: 1000,    // ±1 second random jitter
+      interval: 10000,
+      jitterRange: 1000,
       ...config
     };
 
@@ -69,13 +69,11 @@ export class AlertPollingService {
       degradedAt: null
     };
 
-    // Get API base URL using centralized configuration (Clean Architecture)
+    // Get API base URL using dynamic configuration (Clean Architecture)
+    // This handles development (localhost) and production (same-origin) correctly
     this.apiBaseUrl = getApiUrl();
   }
 
-  /**
-   * Start polling for pending alerts
-   */
   start(sucursalId: string, onAlert: (alert: AlertData) => void, onError?: (error: Error) => void): void {
     if (this.state.isPolling) {
       console.warn('[AlertPolling] Already polling, stopping previous instance');
@@ -94,16 +92,10 @@ export class AlertPollingService {
       interval: this.config.interval
     });
 
-    // Start first poll immediately
     this.poll();
-
-    // Setup visibility change listener
     this.setupVisibilityListener();
   }
 
-  /**
-   * Stop polling
-   */
   stop(): void {
     if (this.state.timeoutId !== null) {
       clearTimeout(this.state.timeoutId);
@@ -119,9 +111,6 @@ export class AlertPollingService {
     console.log('[AlertPolling] Stopped alert polling');
   }
 
-  /**
-   * Pause polling (e.g., when tab is hidden)
-   */
   pause(): void {
     if (!this.state.isPolling) return;
 
@@ -134,22 +123,14 @@ export class AlertPollingService {
     console.log('[AlertPolling] Paused alert polling');
   }
 
-  /**
-   * Resume polling (e.g., when tab becomes visible)
-   */
   resume(): void {
     if (!this.state.isPolling || !this.state.isPaused) return;
 
     this.state.isPaused = false;
     console.log('[AlertPolling] Resumed alert polling');
-
-    // Poll immediately on resume to get fresh alerts
     this.poll();
   }
 
-  /**
-   * Acknowledge an alert
-   */
   async acknowledgeAlert(timerId: string, alertMinutes: number): Promise<void> {
     try {
       const token = this.getToken();
@@ -180,9 +161,6 @@ export class AlertPollingService {
     }
   }
 
-  /**
-   * Perform a single poll request for pending alerts
-   */
   private async poll(): Promise<void> {
     if (!this.state.isPolling || this.state.isPaused) {
       return;
@@ -211,11 +189,9 @@ export class AlertPollingService {
         const alerts: AlertData[] = await response.json();
         this.handleAlerts(alerts);
         
-        // Reset error counters on success
         this.state.errorCount = 0;
         this.state.consecutiveFailures = 0;
         
-        // Clear degraded state if recovered
         if (this.state.degradedAt !== null) {
           const recoveryTime = Date.now() - this.state.degradedAt;
           console.log(`[AlertPolling] System recovered after ${Math.round(recoveryTime / 1000)}s`);
@@ -231,15 +207,10 @@ export class AlertPollingService {
       this.handleError(error as Error);
     }
 
-    // Schedule next poll
     this.scheduleNextPoll();
   }
 
-  /**
-   * Handle received alerts
-   */
   private handleAlerts(alerts: AlertData[]): void {
-    // Store successful data for fallback
     this.lastSuccessfulData = alerts;
 
     if (alerts.length === 0) {
@@ -248,19 +219,15 @@ export class AlertPollingService {
 
     console.log('[AlertPolling] Received alerts', { count: alerts.length });
 
-    // Process each alert
     for (const alert of alerts) {
       const alertKey = `${alert.timer_id}-${alert.alert_minutes}`;
 
-      // Skip if already shown
       if (this.state.shownAlerts.has(alertKey)) {
         continue;
       }
 
-      // Mark as shown
       this.state.shownAlerts.add(alertKey);
 
-      // Notify callback
       if (this.onAlert) {
         this.onAlert(alert);
       }
@@ -273,23 +240,18 @@ export class AlertPollingService {
     }
   }
 
-  /**
-   * Handle polling error
-   */
   private handleError(error: Error): void {
     this.state.errorCount++;
     this.state.consecutiveFailures++;
 
     const FAILURE_THRESHOLD = 2;
 
-    // Log diferenciado: debug para transient, warn para persistent
     if (this.state.consecutiveFailures === 1) {
       console.debug('[AlertPolling] Transient failure', {
         error: error.message,
         errorCount: this.state.errorCount
       });
     } else if (this.state.consecutiveFailures >= FAILURE_THRESHOLD) {
-      // Mark system as degraded
       if (this.state.degradedAt === null) {
         this.state.degradedAt = Date.now();
       }
@@ -301,34 +263,27 @@ export class AlertPollingService {
         degradedForSeconds: Math.round((Date.now() - this.state.degradedAt) / 1000)
       });
 
-      // Graceful degradation: use last successful data if available
       if (this.lastSuccessfulData && this.lastSuccessfulData.length > 0) {
         console.log('[AlertPolling] Using fallback data (last successful response)');
         this.handleAlerts(this.lastSuccessfulData);
       }
     }
 
-    // Notify error callback
     if (this.onError) {
       this.onError(error);
     }
 
-    // Stop polling after too many errors
     if (this.state.errorCount >= 10) {
       console.error('[AlertPolling] Too many errors, stopping alert polling');
       this.stop();
     }
   }
 
-  /**
-   * Schedule next poll with jitter
-   */
   private scheduleNextPoll(): void {
     if (!this.state.isPolling || this.state.isPaused) {
       return;
     }
 
-    // Add random jitter to prevent thundering herd
     const jitter = (Math.random() - 0.5) * this.config.jitterRange;
     const delay = Math.max(0, this.config.interval + jitter);
 
@@ -337,9 +292,6 @@ export class AlertPollingService {
     }, delay);
   }
 
-  /**
-   * Setup visibility change listener for pause/resume
-   */
   private setupVisibilityListener(): void {
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -351,7 +303,6 @@ export class AlertPollingService {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Cleanup on stop
     const originalStop = this.stop.bind(this);
     this.stop = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -359,9 +310,6 @@ export class AlertPollingService {
     };
   }
 
-  /**
-   * Get authentication token from localStorage
-   */
   private getToken(): string | null {
     try {
       return localStorage.getItem('auth_token');
@@ -371,9 +319,6 @@ export class AlertPollingService {
     }
   }
 
-  /**
-   * Get current polling state (for debugging)
-   */
   getState(): Readonly<Omit<AlertPollingState, 'shownAlerts'> & { shownAlertsCount: number }> {
     return {
       isPolling: this.state.isPolling,
@@ -385,5 +330,4 @@ export class AlertPollingService {
   }
 }
 
-// Export singleton instance
 export const alertPollingService = new AlertPollingService();
