@@ -15,7 +15,7 @@
   import "$lib/styles/dashboard-theme.css";
 
   // Public routes that don't require authentication
-  const publicRoutes = ["/"];
+  const publicRoutes = ["/", "/display"];
 
   // Check if current route is public
   $: isPublicRoute = publicRoutes.includes($page.url.pathname);
@@ -49,7 +49,8 @@
       // Clean Architecture: Check access permissions first (single source of truth)
       // This allows superadmin and other roles with cross-panel access to navigate freely
       // Superadmin should have access to all panels (admin, admin-viewer, recepcion, kidibar, monitor)
-      if (!hasAccess(currentPath)) {
+      // Skip access check for public routes (they don't require authentication)
+      if (!hasAccess(currentPath) && !isPublicRoute) {
         // User doesn't have access to this route, redirect to their default role route
         const userRole = $user?.role;
         if (userRole) {
@@ -64,6 +65,7 @@
       // For non-superadmin roles: verify route matches their default role route
       // This prevents regular users from accessing routes outside their default panel
       // But allows access if routePermissions explicitly allow it (checked above)
+      // Skip this check for public routes (they don't require role-based access)
       const userRole = $user?.role;
       if (userRole && userRole !== "super_admin") {
         const roleRoutes = Object.values(ROLE_ROUTES);
@@ -71,7 +73,8 @@
         
         // If user is not on any role route and doesn't have explicit permission, redirect
         // Note: hasAccess() already checked above, so this is just for non-standard routes
-        if (!isOnRoleRoute && !currentPath.startsWith(userRoleRoute)) {
+        // Skip redirect for public routes
+        if (!isOnRoleRoute && !currentPath.startsWith(userRoleRoute) && !isPublicRoute) {
           goto(userRoleRoute);
           return;
         }

@@ -16,7 +16,7 @@
   import { Button } from "@kidyland/ui";
   import ExtendTimerModal from "$lib/components/shared/ExtendTimerModal.svelte";
   import type { Timer, Sale } from "@kidyland/shared/types";
-  import { Clock, Clock3 } from "lucide-svelte";
+  import { Clock, Clock3, Monitor } from "lucide-svelte";
   import { fetchSaleById } from "$lib/stores/sales-history";
 
   onMount(() => {
@@ -85,8 +85,20 @@
 
 <div class="timers-page">
   <div class="page-header">
-    <button class="back-button" on:click={() => goto("/recepcion")}>← Volver</button>
-    <h1 class="page-title">Timers Activos</h1>
+    <div class="header-left">
+      <button class="back-button" on:click={() => goto("/recepcion")}>← Volver</button>
+      <h1 class="page-title">Timers Activos</h1>
+    </div>
+    <a 
+      href="/display?sucursal_id={sucursalId}" 
+      target="_blank" 
+      rel="noopener noreferrer"
+      class="display-button"
+      aria-label="Abrir Vista Display en nueva pestaña"
+    >
+      <Monitor size={18} strokeWidth={2} />
+      <span>Vista Display</span>
+    </a>
   </div>
 
   {#if $timersStore.error}
@@ -209,10 +221,19 @@
 
   .page-header {
     display: flex;
+    justify-content: space-between;
     align-items: center;
     gap: var(--spacing-md);
     margin-bottom: var(--spacing-xl);
     flex-wrap: wrap;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+    flex: 1;
   }
 
   .back-button {
@@ -233,6 +254,36 @@
     transform: translateY(-2px);
     border-color: rgba(0, 147, 247, 0.5);
     box-shadow: 0 4px 12px rgba(0, 147, 247, 0.2);
+  }
+
+  .display-button {
+    min-width: 48px;
+    min-height: 48px;
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--accent-primary);
+    border: 2px solid var(--accent-primary);
+    border-radius: var(--radius-md);
+    color: white;
+    cursor: pointer;
+    font-size: var(--text-base);
+    font-weight: 600;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    box-shadow: 3px 3px 0px 0px rgba(0, 147, 247, 0.3);
+    text-decoration: none;
+  }
+
+  .display-button:hover {
+    background: #0082d9;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 147, 247, 0.4);
+  }
+
+  .display-button:active {
+    transform: translateY(0);
+    box-shadow: 2px 2px 0px 0px rgba(0, 147, 247, 0.3);
   }
 
   .page-title {
@@ -604,6 +655,17 @@
       gap: var(--spacing-sm);
     }
 
+    .header-left {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .display-button {
+      width: 100%;
+      justify-content: center;
+      order: -1;
+    }
+
     .page-title {
       font-size: var(--text-2xl);
       text-align: center;
@@ -683,6 +745,11 @@
 
     .back-button:hover {
       transform: none;
+    }
+
+    .display-button:hover {
+      transform: none;
+      box-shadow: 3px 3px 0px 0px rgba(0, 147, 247, 0.3);
     }
 
     .timer-actions :global(.btn-brutalist:hover) {

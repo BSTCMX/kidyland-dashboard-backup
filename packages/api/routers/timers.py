@@ -42,6 +42,63 @@ async def get_active_timers(
     return timers
 
 
+@router.get("/alerts/pending", response_model=List[Dict[str, Any]])
+async def get_pending_alerts(
+    sucursal_id: Optional[str] = Query(None, description="Optional: Filter by sucursal ID"),
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Get pending timer alerts that haven't been acknowledged.
+    
+    Used by alertPollingService to fetch alerts every 10 seconds.
+    Returns alerts based on service configuration (alerts_config).
+    
+    Security: All authenticated users can view pending alerts.
+    
+    Args:
+        sucursal_id: Optional sucursal ID filter
+    
+    Returns:
+        List of pending alert objects with timer and alert configuration
+    """
+    try:
+        # Get active timers with time_left calculated
+        timers = await TimerService.get_timers_with_time_left(
+            db=db,
+            sucursal_id=sucursal_id
+        )
+        
+        # Detect alerts based on service configuration
+        alerts = await TimerAlertService.detect_timer_alerts(
+            db=db,
+            timers_data=timers,
+            sucursal_id=sucursal_id
+        )
+        
+        logger.debug(
+            f"Pending alerts retrieved: {len(alerts)} alerts found",
+            extra={
+                "alert_count": len(alerts),
+                "sucursal_id": sucursal_id,
+                "user_id": str(current_user.id) if hasattr(current_user, 'id') else None
+            }
+        )
+        
+        return alerts
+        
+    except Exception as e:
+        logger.error(
+            f"Error retrieving pending alerts: {e}",
+            exc_info=True,
+            extra={"sucursal_id": sucursal_id}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error retrieving pending alerts"
+        )
+
+
 @router.post("/{timer_id}/alerts/acknowledge", response_model=Dict[str, Any])
 async def acknowledge_timer_alert(
     timer_id: UUID,

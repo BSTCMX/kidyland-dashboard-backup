@@ -181,6 +181,27 @@ class TimerAlertService:
         if TimerAlertService._should_cleanup_sent_alerts():
             TimerAlertService._cleanup_sent_alerts(active_timer_ids)
         
+        # Clear sent alerts for timers that are no longer in threshold range
+        # This allows alerts to re-trigger if timer is extended back into threshold
+        for timer_data in timers_data:
+            timer_id = timer_data["id"]
+            time_left_minutes = timer_data.get("time_left_minutes", 0)
+            
+            # Clear alerts for thresholds that timer has passed
+            # (timer is now below threshold - 2 minutes, outside the detection window)
+            alerts_to_clear = [
+                (timer_id, alert_min)
+                for (tid, alert_min) in list(TimerAlertService._sent_alerts)
+                if tid == timer_id and time_left_minutes < (alert_min - 2)
+            ]
+            
+            for alert_key in alerts_to_clear:
+                TimerAlertService._sent_alerts.discard(alert_key)
+                logger.debug(
+                    f"Cleared sent alert (timer passed threshold): timer_id={timer_id}, alert_minutes={alert_key[1]}",
+                    extra={"timer_id": timer_id, "alert_minutes": alert_key[1], "time_left_minutes": time_left_minutes}
+                )
+        
         # Get all service IDs from timers
         service_ids = {UUID(timer["service_id"]) for timer in timers_data}
         
@@ -221,10 +242,10 @@ class TimerAlertService:
                 if not isinstance(minutes_before, int):
                     continue
                 
-                # Check if timer time_left matches this alert threshold exactly
-                # Alert triggers only when time_left == minutes_before (exact match)
-                # This respects the admin dashboard configuration and prevents multiple alerts
-                if time_left_minutes == minutes_before:
+                # Check if timer time_left is within alert threshold window
+                # Alert triggers when time_left is at or just below threshold (within 2-minute window)
+                # This ensures alerts are captured even with polling intervals, while _is_alert_sent() prevents duplicates
+                if time_left_minutes <= minutes_before and time_left_minutes > (minutes_before - 2):
                     # Skip if alert has been acknowledged by a user
                     if TimerAlertService._is_alert_acknowledged(timer_id, minutes_before):
                         logger.debug(
@@ -233,36 +254,34 @@ class TimerAlertService:
                         )
                         continue
                     
-                    # Check if we've already sent this alert
-                    if not TimerAlertService._is_alert_sent(timer_id, minutes_before):
-                        # Create alert message
-                        alert_message = {
-                            "type": "timer_alert",
-                            "timer": {
-                                "id": timer_id,
-                                "sale_id": timer_data.get("sale_id"),
-                                "service_id": service_id,
-                                "time_left_minutes": time_left_minutes,
-                                "child_name": timer_data.get("child_name"),
-                                "child_age": timer_data.get("child_age"),
-                                "status": "alert",
-                            },
+                    # Create alert message
+                    alert_message = {
+                        "type": "timer_alert",
+                        "timer_id": timer_id,  # Frontend expects timer_id in root
+                        "alert_minutes": minutes_before,
+                        "alerts_config": service.alerts_config,  # Include full config for frontend
+                        "triggered_at": datetime.now(timezone.utc).isoformat(),  # Timestamp for tracking
+                        "timer": {
+                            "id": timer_id,
+                            "sale_id": timer_data.get("sale_id"),
+                            "service_id": service_id,
+                            "time_left_minutes": time_left_minutes,
+                            "child_name": timer_data.get("child_name"),
+                            "child_age": timer_data.get("child_age"),
+                            "status": "alert",
+                        },
+                    }
+                    
+                    alerts.append(alert_message)
+                    
+                    
+                    logger.info(
+                        f"Timer alert detected: timer_id={timer_id}, alert_minutes={minutes_before}, time_left={time_left_minutes}",
+                        extra={
+                            "timer_id": timer_id,
                             "alert_minutes": minutes_before,
-                            "alerts_config": service.alerts_config,  # Include full config for frontend
-                        }
-                        
-                        alerts.append(alert_message)
-                        
-                        # Mark alert as sent
-                        TimerAlertService._mark_alert_sent(timer_id, minutes_before)
-                        
-                        logger.info(
-                            f"Timer alert detected: timer_id={timer_id}, alert_minutes={minutes_before}, time_left={time_left_minutes}",
-                            extra={
-                                "timer_id": timer_id,
-                                "alert_minutes": minutes_before,
-                                "time_left_minutes": time_left_minutes,
-                                "service_id": service_id,
+                            "time_left_minutes": time_left_minutes,
+                            "service_id": service_id,
                             }
                         )
         

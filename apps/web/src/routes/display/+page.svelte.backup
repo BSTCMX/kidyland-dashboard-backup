@@ -77,13 +77,8 @@
   }
 
   onMount(() => {
-    // Get sucursalId from URL params (preferred) or fallback to user store
-    const sucursalId = data.sucursalId;
-    
-    if (sucursalId) {
-      startTimerPolling(sucursalId);
-    } else {
-      console.warn("[Display] No sucursalId provided in URL");
+    if (data.sucursalId) {
+      startTimerPolling(data.sucursalId);
     }
 
     // Cleanup finished timers every 10 seconds
