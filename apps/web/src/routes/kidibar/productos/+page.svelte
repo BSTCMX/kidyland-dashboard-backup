@@ -3,16 +3,16 @@
    * Products section page for KidiBar.
    * 
    * Displays list of products available for sale in KidiBar.
-   * Read-only view for recepcion role, full access for kidibar role.
+   * Uses centralized permission system for role-based access control.
    */
   import { onMount } from "svelte";
   import { goto } from "$app/navigation";
-  import { user, hasAccessSecure, canEditSecure } from "$lib/stores/auth";
+  import { user, hasAccessSecure, canCreateSales } from "$lib/stores/auth";
   import ProductList from "$lib/components/admin/ProductList.svelte";
   import { Button } from "@kidyland/ui";
   import { ShoppingCart } from "lucide-svelte";
 
-  $: canSell = $user?.role === "kidibar" || $user?.role === "super_admin";
+  $: canSell = canCreateSales($user?.role, "kidibar");
 
   function handleNewSale() {
     goto("/kidibar/venta");

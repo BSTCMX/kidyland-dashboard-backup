@@ -255,7 +255,7 @@ export const DEFAULT_ROUTE_PERMISSIONS: RoutePermissions = {
 export const DEFAULT_EDIT_PERMISSIONS: EditPermissions = {
   admin: ["super_admin"],
   recepcion: ["super_admin", "recepcion"],
-  kidibar: ["super_admin", "kidibar"],
+  kidibar: ["super_admin", "kidibar", "recepcion"],
   monitor: ["super_admin"]
 };
 

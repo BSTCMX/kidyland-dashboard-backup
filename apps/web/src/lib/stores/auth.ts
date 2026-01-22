@@ -28,6 +28,15 @@ export {
   type EditPermissions,
 } from "@kidyland/utils";
 
+// Re-export permission utilities from local permissions module
+export {
+  getModulePermissions,
+  canCreateSales,
+  canExecuteDayOperations,
+  clearPermissionCache,
+  type ModulePermissions,
+} from "../utils/permissions";
+
 // Import login and logout to wrap them
 import { login as baseLogin, logout as baseLogout } from "@kidyland/utils";
 

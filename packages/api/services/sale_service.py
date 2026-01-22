@@ -56,9 +56,9 @@ class SaleService:
         Raises:
             ValueError: If validation fails
         """
-        # Validate user has permission (recepcion or kidibar)
-        if current_user.role not in [UserRole.RECEPCION, UserRole.KIDIBAR]:
-            raise ValueError("Only recepcion and kidibar roles can create sales")
+        # Validate user has permission (recepcion, kidibar, or super_admin)
+        if current_user.role not in [UserRole.RECEPCION, UserRole.KIDIBAR, UserRole.SUPER_ADMIN]:
+            raise ValueError("Only recepcion, kidibar, and super_admin roles can create sales")
         
         # Validate items exist
         if not sale_data.items or len(sale_data.items) == 0:

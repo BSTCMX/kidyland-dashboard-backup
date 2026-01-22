@@ -53,7 +53,7 @@ export function getModulePermissions(
     recepcion: {
       admin: { canAccess: false, canEdit: false, canCreate: false, canDelete: false },
       recepcion: { canAccess: true, canEdit: true, canCreate: true, canDelete: true },
-      kidibar: { canAccess: true, canEdit: false, canCreate: false, canDelete: false }, // READ+ supervision
+      kidibar: { canAccess: true, canEdit: true, canCreate: true, canDelete: true }, // Full access
       monitor: { canAccess: false, canEdit: false, canCreate: false, canDelete: false },
     },
     kidibar: {
@@ -104,31 +104,18 @@ export function canExecuteDayOperations(userRole: UserRole | undefined): boolean
   return userRole === "kidibar" || userRole === "recepcion" || userRole === "super_admin";
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/**
+ * Check if user can create sales in a specific module.
+ *
+ * Centralized permission check for sales creation across all modules.
+ * Uses the permission matrix as single source of truth.
+ *
+ * @param userRole - User's role
+ * @param module - Module to check sales permissions for
+ * @returns True if user can create sales in the module
+ */
+export function canCreateSales(userRole: UserRole | undefined, module: Module): boolean {
+  if (!userRole) return false;
+  return getModulePermissions(userRole, module).canCreate;
+}
 

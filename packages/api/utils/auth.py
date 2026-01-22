@@ -125,6 +125,15 @@ def require_role(required_roles: Union[str, List[str]]):
         # Normalize role comparison: use .value for enum to string conversion
         user_role_value = db_user.role.value if hasattr(db_user.role, 'value') else str(db_user.role)
         
+        # Super admin bypass: full system access regardless of required roles
+        # This maintains security by still validating the user exists and is active
+        if user_role_value == "super_admin":
+            logger.debug(
+                f"Super admin bypass: user_id={db_user.id}, username={db_user.username}, "
+                f"required_roles={allowed_roles}"
+            )
+            return db_user
+        
         if user_role_value not in allowed_roles:
             roles_str = ", ".join(allowed_roles)
             raise HTTPException(
