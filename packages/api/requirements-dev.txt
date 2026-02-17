@@ -19,7 +19,7 @@ faker==24.4.0
 # Coverage Reporting
 coverage[toml]==7.5.3
 
-# Code Quality (already in pyproject.toml, but listed here for completeness)
-# ruff
-# black
-# mypy
+# Code Quality (required for git hooks: pre-commit runs ruff/black via lint-staged)
+ruff>=0.6.0
+black>=24.0.0
+# mypy  # optional for typecheck; add if needed

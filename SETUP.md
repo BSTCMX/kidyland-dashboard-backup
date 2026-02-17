@@ -29,6 +29,7 @@ pnpm install
 ```
 
 Esto instalará **localmente** (en `node_modules/`):
+
 - Todas las dependencias de frontend (ESLint, Prettier, TypeScript, etc.)
 - Husky para Git hooks
 - commitlint para validación de commits
@@ -60,6 +61,7 @@ pnpm prepare
 ```
 
 Esto configurará Husky con los hooks:
+
 - `pre-commit` - Ejecuta lint-staged
 - `pre-push` - Ejecuta validación completa
 - `commit-msg` - Valida formato de commits
@@ -80,6 +82,7 @@ pnpm typecheck:api
 Después de la instalación, verifica:
 
 1. **Frontend tools**:
+
    ```bash
    pnpm lint
    pnpm format
@@ -87,6 +90,7 @@ Después de la instalación, verifica:
    ```
 
 2. **Backend tools**:
+
    ```bash
    pnpm lint:api
    pnpm format:api
@@ -107,6 +111,7 @@ Después de la instalación, verifica:
 ### VS Code
 
 Recomendado instalar extensiones:
+
 - ESLint
 - Prettier
 - Svelte for VS Code
@@ -114,6 +119,7 @@ Recomendado instalar extensiones:
 - EditorConfig for VS Code
 
 Configuración recomendada en `.vscode/settings.json`:
+
 ```json
 {
   "editor.formatOnSave": true,
@@ -142,16 +148,18 @@ Este proyecto está configurado para deployment en Fly.io usando Alpine Linux 3.
    - Frontend: `infra/docker/Dockerfile.web`
 
 2. **Configurar Fly.io:**
+
    ```bash
    fly launch
    # Seguir instrucciones interactivas
    ```
 
 3. **Deploy:**
+
    ```bash
    # Backend
    fly deploy --dockerfile infra/docker/Dockerfile.api
-   
+
    # Frontend (ajustar según app)
    fly deploy --dockerfile infra/docker/Dockerfile.web
    ```
@@ -188,11 +196,25 @@ pnpm prepare
 chmod +x .husky/*/.husky/_/husky.sh
 ```
 
-### Python tools no se encuentran
+### Python tools no se encuentran (ruff/black en pre-commit)
 
-Asegúrate de estar en el entorno virtual:
+Los hooks de husky (pre-commit, pre-push) añaden `packages/api/venv/bin` o `packages/api/.venv/bin` al PATH si existen. Para que los commits pasen sin `--no-verify`:
+
+1. Crea el venv en el API e instala dependencias de desarrollo:
+
 ```bash
 cd packages/api
-source venv/bin/activate  # O venv\Scripts\activate en Windows
+python3 -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
+2. El venv debe estar en `packages/api/venv` o `packages/api/.venv` para que los hooks lo detecten.
+
+Para usar las herramientas en tu terminal, activa el venv:
+
+```bash
+cd packages/api
+source venv/bin/activate   # O venv\Scripts\activate en Windows
+```

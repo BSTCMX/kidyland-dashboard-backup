@@ -1,6 +1,13 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
+# Add API venv to PATH so ruff/black are found when validate runs lint:api (from repo root)
+if [ -d "packages/api/venv/bin" ]; then
+  export PATH="$(pwd)/packages/api/venv/bin:$PATH"
+elif [ -d "packages/api/.venv/bin" ]; then
+  export PATH="$(pwd)/packages/api/.venv/bin:$PATH"
+fi
+
 pnpm validate
 
 
