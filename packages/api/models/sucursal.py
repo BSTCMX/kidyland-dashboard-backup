@@ -4,7 +4,7 @@ Sucursal model.
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, Boolean, DateTime
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -23,6 +23,7 @@ class Sucursal(Base):
     address = Column(String(255), nullable=True)
     timezone = Column(String(50), nullable=False, default="America/Mexico_City")
     active = Column(Boolean, nullable=False, default=True)
+    display_settings = Column(JSON, nullable=True, default=None)  # e.g. {"zero_alert": {"sound_enabled": bool, "sound_loop": bool}}
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

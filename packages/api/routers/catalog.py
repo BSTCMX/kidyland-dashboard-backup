@@ -14,7 +14,14 @@ from sqlalchemy.exc import IntegrityError
 from typing import List
 import logging
 from database import get_db
-from schemas.sucursal import SucursalCreate, SucursalRead, SucursalUpdate
+from schemas.sucursal import (
+    SucursalCreate,
+    SucursalRead,
+    SucursalUpdate,
+    DisplaySettingsRead,
+    DisplaySettingsUpdate,
+    ZeroAlertConfig,
+)
 from schemas.product import ProductCreate, ProductRead, ProductUpdate
 from schemas.service import ServiceCreate, ServiceRead, ServiceUpdate
 from schemas.package import PackageCreate, PackageRead, PackageUpdate
@@ -33,7 +40,133 @@ logger = logging.getLogger(__name__)
 # ========== SUCURSALES ==========
 
 # IMPORTANT: Route order matters in FastAPI - specific routes must come before general ones
-# Put /sucursales/{sucursal_id} BEFORE /sucursales to avoid routing conflicts
+# More specific paths (e.g. .../display-settings) must come before /sucursales/{sucursal_id}
+
+
+def _display_settings_from_sucursal(sucursal: Sucursal) -> DisplaySettingsRead:
+    """Build DisplaySettingsRead from sucursal.display_settings JSON or defaults."""
+    raw = sucursal.display_settings or {}
+    za = raw.get("zero_alert") or {}
+    return DisplaySettingsRead(
+        zero_alert=ZeroAlertConfig(
+            sound_enabled=za.get("sound_enabled", False),
+            sound_loop=za.get("sound_loop", False),
+        )
+    )
+
+
+@router.get(
+    "/sucursales/{sucursal_id}/display-settings/public",
+    response_model=DisplaySettingsRead,
+)
+async def get_display_settings_public(
+    sucursal_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public read-only display settings for Vista Display (kiosk/TV).
+    No auth required. Returns only zero_alert (sound_enabled, sound_loop).
+    """
+    try:
+        sucursal_uuid = uuid.UUID(sucursal_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid sucursal_id format: {sucursal_id}",
+        )
+    result = await db.execute(select(Sucursal).where(Sucursal.id == sucursal_uuid))
+    sucursal = result.scalar_one_or_none()
+    if not sucursal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sucursal not found",
+        )
+    settings = _display_settings_from_sucursal(sucursal)
+    logger.info(
+        "[Display] GET display-settings/public sucursal_id=%s sound_enabled=%s",
+        sucursal_id,
+        settings.zero_alert.sound_enabled,
+    )
+    return settings
+
+
+@router.get(
+    "/sucursales/{sucursal_id}/display-settings",
+    response_model=DisplaySettingsRead,
+    dependencies=[Depends(require_role(["super_admin", "recepcion"]))],
+)
+async def get_display_settings(
+    sucursal_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get display settings for a sucursal (Vista Display: zero_alert etc.).
+    Used by Vista Display to read config. Reception and super_admin can read.
+    """
+    try:
+        sucursal_uuid = uuid.UUID(sucursal_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid sucursal_id format: {sucursal_id}",
+        )
+    result = await db.execute(select(Sucursal).where(Sucursal.id == sucursal_uuid))
+    sucursal = result.scalar_one_or_none()
+    if not sucursal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sucursal not found",
+        )
+    if current_user.sucursal_id and sucursal.id != current_user.sucursal_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sucursal not found",
+        )
+    return _display_settings_from_sucursal(sucursal)
+
+
+@router.put(
+    "/sucursales/{sucursal_id}/display-settings",
+    response_model=DisplaySettingsRead,
+    dependencies=[Depends(require_role(["super_admin", "recepcion"]))],
+)
+async def update_display_settings(
+    sucursal_id: str,
+    payload: DisplaySettingsUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Update display settings for a sucursal. Configured from Ventana Timers (Recepción).
+    """
+    try:
+        sucursal_uuid = uuid.UUID(sucursal_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid sucursal_id format: {sucursal_id}",
+        )
+    result = await db.execute(select(Sucursal).where(Sucursal.id == sucursal_uuid))
+    sucursal = result.scalar_one_or_none()
+    if not sucursal:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sucursal not found",
+        )
+    if current_user.sucursal_id and sucursal.id != current_user.sucursal_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sucursal not found",
+        )
+    raw = (sucursal.display_settings or {}).copy()
+    if payload.zero_alert is not None:
+        raw["zero_alert"] = payload.zero_alert.model_dump()
+    sucursal.display_settings = raw
+    await db.commit()
+    await db.refresh(sucursal)
+    return _display_settings_from_sucursal(sucursal)
+
 
 @router.get("/sucursales/{sucursal_id}", response_model=SucursalRead)
 async def get_sucursal(

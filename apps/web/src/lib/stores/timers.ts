@@ -13,6 +13,7 @@ import type { Timer, ServiceAlert } from "@kidyland/shared/types";
 import { addNotification, removeNotification } from "./notifications";
 import { timerPollingService } from "$lib/services/timerPollingService";
 import { alertPollingService } from "$lib/services/alertPollingService";
+import { ALERT_SOUND_SRC } from "$lib/constants/assets";
 
 export interface TimersState {
   list: Timer[];
@@ -441,7 +442,7 @@ function playAlertSound(alertConfig: ServiceAlert, alertMinutes: number): void {
 
   let audio = alertAudioElements.get(alertMinutes);
   if (!audio) {
-    audio = new Audio("/sounds/alert.mp3");
+    audio = new Audio(ALERT_SOUND_SRC);
     alertAudioElements.set(alertMinutes, audio);
 
     audio.addEventListener("ended", () => {

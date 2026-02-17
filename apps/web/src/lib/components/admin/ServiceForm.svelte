@@ -9,6 +9,7 @@
   import { createService, updateService } from "$lib/stores/services-admin";
   import { fetchAllSucursales, sucursalesAdminStore } from "$lib/stores/sucursales-admin";
   import MultiSelectDropdown from "$lib/components/shared/MultiSelectDropdown.svelte";
+  import { ALERT_SOUND_SRC } from "$lib/constants/assets";
   import { createEventDispatcher } from "svelte";
 
   // Option interface for MultiSelectDropdown (matches MultiSelectDropdown.svelte)
@@ -365,9 +366,9 @@
     // Stop any currently playing preview
     stopSoundPreview();
 
-    // Create audio element if it doesn't exist
+    // Create audio element if it doesn't exist (shared alert asset)
     if (!previewAudio) {
-      previewAudio = new Audio("/sounds/alert.mp3");
+      previewAudio = new Audio(ALERT_SOUND_SRC);
       previewAudio.addEventListener("ended", () => {
         if (previewingMinutes === minutes && alertSoundConfig[minutes]?.loop) {
           // If loop is enabled, restart the sound

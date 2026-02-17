@@ -46,6 +46,31 @@ class SucursalRead(SucursalBase):
         from_attributes = True
 
 
+# ---------- Display settings (Vista Display: zero_alert only) ----------
+
+
+class ZeroAlertConfig(BaseModel):
+    """Config for alert when timer reaches 0 (Vista Display only)."""
+    sound_enabled: bool = False
+    sound_loop: bool = False
+
+
+class DisplaySettingsRead(BaseModel):
+    """Display settings for a sucursal (read)."""
+    zero_alert: ZeroAlertConfig = ZeroAlertConfig()
+
+    class Config:
+        from_attributes = True
+
+
+class DisplaySettingsUpdate(BaseModel):
+    """Display settings update (partial)."""
+    zero_alert: Optional[ZeroAlertConfig] = None
+
+    class Config:
+        from_attributes = True
+
+
 
 
 

@@ -137,6 +137,42 @@ export async function get(endpoint: string, options: FetchWithTimeoutOptions = {
 }
 
 /**
+ * Make a GET request without authentication (e.g. public display settings for kiosk).
+ * Does not send token; does not trigger logout on 401.
+ */
+export async function getPublic(
+  endpoint: string,
+  options: FetchWithTimeoutOptions = {}
+): Promise<any> {
+  const url = `${getApiUrl()}${endpoint}`;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> || {}),
+  };
+  const res =
+    options.timeout !== undefined
+      ? await fetchWithTimeout(url, { ...options, method: "GET", headers })
+      : await fetch(url, { ...options, method: "GET", headers });
+
+  if (!res.ok) {
+    let errorData: { detail?: string };
+    try {
+      errorData = await res.json();
+    } catch {
+      errorData = { detail: `Request failed: ${res.statusText}` };
+    }
+    const error = new Error(errorData.detail || `Request failed: ${res.statusText}`);
+    (error as any).response = { data: errorData, status: res.status };
+    throw error;
+  }
+  const contentType = res.headers.get("content-type");
+  if (contentType && contentType.includes("application/json")) {
+    return await res.json();
+  }
+  return {};
+}
+
+/**
  * Make a POST request.
  * 
  * @param endpoint - API endpoint

@@ -1,13 +1,12 @@
 /**
  * Beep utility functions for audio notifications.
- * 
- * Provides simple beep/alert sound functionality.
- * Currently not actively used - sound alerts are handled in timers store.
+ * Reuses shared alert asset (same as Display, timers, ServiceForm).
  */
 
+import { ALERT_SOUND_SRC } from "$lib/constants/assets";
+
 /**
- * Play a beep sound using the alert audio file.
- * 
+ * Play a beep sound using the shared alert audio file.
  * @param loop - Whether to loop the sound (default: false)
  */
 export function beep(loop: boolean = false): void {
@@ -15,7 +14,7 @@ export function beep(loop: boolean = false): void {
     return; // SSR safety
   }
 
-  const audio = new Audio("/sounds/alert.mp3");
+  const audio = new Audio(ALERT_SOUND_SRC);
   audio.loop = loop;
   audio.play().catch((err) => {
     console.error("Error playing beep:", err);

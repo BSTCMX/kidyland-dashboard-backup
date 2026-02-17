@@ -3,6 +3,7 @@
    * Timers page - Active timers list for reception.
    * 
    * Shows active timers with real-time WebSocket updates.
+   * Includes panel to configure Vista Display (zero alert: sound when timer reaches 0).
    */
   import { onMount, onDestroy } from "svelte";
   import { goto } from "$app/navigation";
@@ -13,11 +14,23 @@
     connectTimerWebSocket,
     disconnectTimerWebSocket,
   } from "$lib/stores/timers";
+  import {
+    displaySettingsStore,
+    fetchDisplaySettings,
+    updateDisplaySettings,
+    getDisplaySettings,
+  } from "$lib/stores/display-settings";
   import { Button } from "@kidyland/ui";
   import ExtendTimerModal from "$lib/components/shared/ExtendTimerModal.svelte";
-  import type { Timer, Sale } from "@kidyland/shared/types";
-  import { Clock, Clock3, Monitor } from "lucide-svelte";
+  import type { Timer, Sale, DisplaySettings } from "@kidyland/shared/types";
+  import { Clock, Clock3, Monitor, ChevronDown, ChevronUp, Volume2 } from "lucide-svelte";
   import { fetchSaleById } from "$lib/stores/sales-history";
+
+  let configPanelOpen = false;
+  let zeroAlertSoundEnabled = false;
+  let zeroAlertSoundLoop = false;
+  let configSaveSuccess = false;
+  let configSaveError: string | null = null;
 
   onMount(() => {
     // Verify user has access to recepcion
@@ -31,6 +44,11 @@
     // Load timers
     if (sucursalId) {
       fetchActiveTimers(sucursalId);
+      // Load display settings for config panel
+      fetchDisplaySettings(sucursalId).then((settings: DisplaySettings) => {
+        zeroAlertSoundEnabled = settings.zero_alert.sound_enabled;
+        zeroAlertSoundLoop = settings.zero_alert.sound_loop;
+      });
     }
 
     // Connect WebSocket
@@ -38,6 +56,21 @@
       connectTimerWebSocket(sucursalId, $token);
     }
   });
+
+  async function saveDisplayConfig() {
+    if (!sucursalId) return;
+    configSaveSuccess = false;
+    configSaveError = null;
+    try {
+      await updateDisplaySettings(sucursalId, {
+        zero_alert: { sound_enabled: zeroAlertSoundEnabled, sound_loop: zeroAlertSoundLoop },
+      });
+      configSaveSuccess = true;
+      setTimeout(() => (configSaveSuccess = false), 3000);
+    } catch (e) {
+      configSaveError = e instanceof Error ? e.message : "Error al guardar";
+    }
+  }
 
   onDestroy(() => {
     disconnectTimerWebSocket();
@@ -99,6 +132,63 @@
       <Monitor size={18} strokeWidth={2} />
       <span>Vista Display</span>
     </a>
+  </div>
+
+  <!-- Vista Display config: zero alert (only affects /display, not this page) -->
+  <div class="display-config-section">
+    <button
+      type="button"
+      class="config-toggle"
+      on:click={() => (configPanelOpen = !configPanelOpen)}
+      aria-expanded={configPanelOpen}
+    >
+      <Volume2 size={18} strokeWidth={2} />
+      <span>Configuración Vista Display</span>
+      {#if configPanelOpen}
+        <ChevronUp size={18} strokeWidth={2} />
+      {:else}
+        <ChevronDown size={18} strokeWidth={2} />
+      {/if}
+    </button>
+    {#if configPanelOpen}
+      <div class="config-panel">
+        <p class="config-help">Alerta cuando un timer llega a 0 en la pantalla pública (Vista Display). No afecta esta ventana.</p>
+        <div class="config-options">
+          <label class="config-checkbox">
+            <input
+              type="checkbox"
+              bind:checked={zeroAlertSoundEnabled}
+              disabled={$displaySettingsStore.saving}
+            />
+            <span>Activar alerta sonora al llegar a 0</span>
+          </label>
+          <label class="config-checkbox" class:disabled={!zeroAlertSoundEnabled}>
+            <input
+              type="checkbox"
+              bind:checked={zeroAlertSoundLoop}
+              disabled={$displaySettingsStore.saving || !zeroAlertSoundEnabled}
+            />
+            <span>Repetir sonido hasta cerrar</span>
+          </label>
+        </div>
+        <div class="config-actions">
+          <Button
+            variant="brutalist"
+            size="small"
+            on:click={saveDisplayConfig}
+            disabled={$displaySettingsStore.saving}
+          >
+            {$displaySettingsStore.saving ? "Guardando…" : "Guardar"}
+          </Button>
+          {#if configSaveSuccess}
+            <span class="config-success">Guardado</span>
+          {/if}
+          {#if configSaveError}
+            <span class="config-error">{configSaveError}</span>
+          {/if}
+        </div>
+      </div>
+    {/if}
   </div>
 
   {#if $timersStore.error}
@@ -286,6 +376,78 @@
   .display-button:active {
     transform: translateY(0);
     box-shadow: 2px 2px 0px 0px rgba(0, 147, 247, 0.3);
+  }
+
+  .display-config-section {
+    margin-bottom: var(--spacing-lg);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md);
+    background: var(--theme-bg-elevated);
+    overflow: hidden;
+  }
+
+  .config-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: var(--text-base);
+    color: var(--text-primary);
+    text-align: left;
+  }
+
+  .config-toggle:hover {
+    background: var(--theme-bg-secondary);
+  }
+
+  .config-panel {
+    padding: var(--spacing-lg);
+    border-top: 1px solid var(--border-primary);
+  }
+
+  .config-help {
+    margin: 0 0 var(--spacing-md);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+  }
+
+  .config-options {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-md);
+  }
+
+  .config-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    cursor: pointer;
+  }
+
+  .config-checkbox.disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .config-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+  }
+
+  .config-success {
+    font-size: var(--text-sm);
+    color: var(--success);
+  }
+
+  .config-error {
+    font-size: var(--text-sm);
+    color: var(--error);
   }
 
   .page-title {

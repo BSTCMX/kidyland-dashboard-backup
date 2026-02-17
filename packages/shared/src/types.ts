@@ -182,3 +182,14 @@ export interface Sucursal {
   updated_at: string;
 }
 
+/** Vista Display: config for alert when timer reaches 0 (sound in Display only). */
+export interface ZeroAlertConfig {
+  sound_enabled: boolean;
+  sound_loop: boolean;
+}
+
+/** Display settings per sucursal (Vista Display). */
+export interface DisplaySettings {
+  zero_alert: ZeroAlertConfig;
+}
+

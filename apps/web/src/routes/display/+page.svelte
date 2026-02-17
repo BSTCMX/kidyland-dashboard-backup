@@ -1,12 +1,30 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { timersStore, startTimerPolling, stopTimerPolling } from "$lib/stores/timers";
+  import { fetchDisplaySettingsPublic, displaySettingsStore, getDisplaySettings } from "$lib/stores/display-settings";
+  import { playZeroAlertSound, scheduleStopZeroAlertSoundAfter } from "$lib/utils/display-alert-sound";
+  import type { DisplaySettings } from "@kidyland/shared/types";
   import type { PageData } from "./$types";
 
   export let data: PageData;
 
   const DISPLAY_THRESHOLD_MINUTES = 5; // Only show timers ≤5 minutes
   const FINISHED_MESSAGE_DURATION = 30000; // 30 seconds in milliseconds
+  const ZERO_ALERT_SOUND_DELAY_MS = 5000; // Delay before playing sound after timer finished (allows config to load, avoids race)
+
+  const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
+    zero_alert: { sound_enabled: false, sound_loop: false },
+  };
+
+  // Display settings from store (reactive: updates when config loads or is saved from Recepción)
+  $: displaySettings =
+    data.sucursalId && $displaySettingsStore.bySucursal[data.sucursalId]
+      ? $displaySettingsStore.bySucursal[data.sucursalId]
+      : DEFAULT_DISPLAY_SETTINGS;
+
+  const playedZeroAlertFor = new Set<string>(); // Mark only after play success (idempotency)
+  const soundScheduledFor = new Set<string>(); // Gate: schedule only once per timerId
+  let zeroAlertSoundTimeoutIds: number[] = []; // Pending timeouts to clear on destroy
 
   // Track finished timers with timestamp
   let finishedTimers = new Map<string, { timer: any; finishedAt: number }>();
@@ -14,35 +32,61 @@
   let cleanupInterval: number;
   let allDisplayItems: Array<{ type: string; timer: any }> = []; // Initialize for SSR
 
+  // Previous snapshot of display timers: used to detect "just finished" when a timer
+  // disappears from the list (backend excludes time_left_seconds <= 0, so we never see 0 in the list).
+  let prevDisplayTimers: Array<any> = [];
+
   // Filter timers for display (≤5 minutes)
-  $: displayTimers = $timersStore.list.filter((timer) => {
+  $: displayTimers = $timersStore.list.filter((timer: any) => {
     const minutes = Math.ceil((timer.time_left_seconds || 0) / 60);
     return minutes > 0 && minutes <= DISPLAY_THRESHOLD_MINUTES;
   });
 
-  // Detect newly finished timers (only add once, don't re-add after cleanup)
+  // 1) Detect "just finished" only: add to finishedTimers (no sound here — decoupled to avoid config race).
   $: {
-    $timersStore.list.forEach((timer) => {
-      if (timer.time_left_seconds <= 0 && 
-          !finishedTimers.has(timer.id) && 
-          !shownFinishedTimers.has(timer.id)) {
-        finishedTimers.set(timer.id, {
-          timer,
-          finishedAt: Date.now(),
-        });
+    const currentIds = new Set(displayTimers.map((t: any) => t.id));
+    const justFinished = prevDisplayTimers.filter((t: any) => !currentIds.has(t.id) && !shownFinishedTimers.has(t.id));
+    if (justFinished.length > 0) {
+      console.log("[Display] Timer(s) just finished (dropped from list)", justFinished.map((t: any) => ({ id: t.id, name: t.child_name ?? t.children?.[0]?.name })));
+      justFinished.forEach((timer: any) => {
         shownFinishedTimers.add(timer.id);
-        finishedTimers = finishedTimers; // Trigger reactivity
-      }
+        finishedTimers.set(timer.id, { timer, finishedAt: Date.now() });
+      });
+      finishedTimers = finishedTimers;
+    }
+    prevDisplayTimers = [...displayTimers];
+  }
+
+  // 2) Schedule sound for each finished timer (block always runs; decision deferred to callback).
+  // Single schedule gate + read fresh config in callback to avoid race and stale closure.
+  $: {
+    const sucursalId = data.sucursalId;
+    finishedTimers.forEach((_item, timerId) => {
+      if (soundScheduledFor.has(timerId)) return;
+      soundScheduledFor.add(timerId);
+      const timeoutId = window.setTimeout(() => {
+        const freshConfig = sucursalId ? getDisplaySettings(sucursalId) : DEFAULT_DISPLAY_SETTINGS;
+        console.log("[Display] 5s callback timerId=" + timerId, { freshConfig: freshConfig?.zero_alert, sound_enabled: freshConfig?.zero_alert?.sound_enabled });
+        if (freshConfig.zero_alert?.sound_enabled) {
+          playZeroAlertSound(freshConfig.zero_alert);
+          if (freshConfig.zero_alert.sound_loop) {
+            scheduleStopZeroAlertSoundAfter(FINISHED_MESSAGE_DURATION);
+          }
+          playedZeroAlertFor.add(timerId);
+        }
+        zeroAlertSoundTimeoutIds = zeroAlertSoundTimeoutIds.filter((id) => id !== timeoutId);
+      }, ZERO_ALERT_SOUND_DELAY_MS);
+      zeroAlertSoundTimeoutIds.push(timeoutId);
     });
   }
 
   // Combined list: active timers + finished timers (within message duration)
   // Prevent duplicates: exclude finished timers that are now active (e.g., after extension)
   $: {
-    const activeIds = new Set(displayTimers.map(t => t.id));
-    
+    const activeIds = new Set(displayTimers.map((t: any) => t.id));
+
     allDisplayItems = [
-      ...displayTimers.map((t) => ({ type: "active", timer: t })),
+      ...displayTimers.map((t: any) => ({ type: "active", timer: t })),
       ...Array.from(finishedTimers.values())
         .filter((item) => 
           Date.now() - item.finishedAt < FINISHED_MESSAGE_DURATION &&
@@ -76,11 +120,12 @@
     return timer.child_name || "Niño sin nombre";
   }
 
-  onMount(() => {
-    // Get sucursalId from URL params (preferred) or fallback to user store
+  onMount(async () => {
     const sucursalId = data.sucursalId;
-    
+
     if (sucursalId) {
+      const settings = await fetchDisplaySettingsPublic(sucursalId);
+      console.log("[Display] fetchDisplaySettingsPublic ok", { sucursalId, zero_alert: settings?.zero_alert });
       startTimerPolling(sucursalId);
     } else {
       console.warn("[Display] No sucursalId provided in URL");
@@ -106,6 +151,9 @@
 
   onDestroy(() => {
     stopTimerPolling();
+    zeroAlertSoundTimeoutIds.forEach((id) => clearTimeout(id));
+    zeroAlertSoundTimeoutIds = [];
+    soundScheduledFor.clear();
     if (cleanupInterval) {
       clearInterval(cleanupInterval);
     }
