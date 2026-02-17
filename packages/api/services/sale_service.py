@@ -400,7 +400,35 @@ class SaleService:
             .where(Sale.id == sale_id)
         )
         return result.scalar_one_or_none()
-    
+
+    @staticmethod
+    def _build_ticket_footer_html(
+        show_signature_block: bool,
+        payer_signature_base64: Optional[str] = None,
+    ) -> str:
+        """
+        Build ticket footer HTML. Reused by generate_ticket_html and generate_ticket_html_with_extension_context.
+        Reception (service/service-package) shows signature block; kidibar (product/product-package) does not.
+        """
+        thanks = "<p>¡Gracias por su compra!</p>"
+        if not show_signature_block:
+            return f"<div class=\"footer\">\n            {thanks}\n        </div>"
+        signature_content = ""
+        if payer_signature_base64 and payer_signature_base64.strip():
+            signature_content = f'<img src="{payer_signature_base64}" alt="Firma" style="max-width: 100%; height: auto; margin-top: 5px;" />'
+        else:
+            signature_content = '<div style="border-bottom: 1px solid #000; height: 30px; margin-top: 5px;"></div>'
+        return f"""<div class="footer">
+            {thanks}
+            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #000; font-size: 9px; text-align: left;">
+                <p style="margin-bottom: 10px;">Al firmar este ticket acepta nuestra política de uso con términos y condiciones</p>
+                <div style="margin-top: 15px;">
+                    <p style="margin-bottom: 5px;">Firma del adulto responsable:</p>
+                    {signature_content}
+                </div>
+            </div>
+        </div>"""
+
     @staticmethod
     async def generate_ticket_html(
         db: AsyncSession,
@@ -489,7 +517,10 @@ class SaleService:
         # Use "Nombre del cliente" for products and product packages
         # Use "Nombre del adulto responsable" for services and service packages
         payer_name_label = "Nombre del cliente" if (is_product_sale or is_product_package_sale) else "Nombre del adulto responsable"
-        
+        # Footer: show signature block for reception (service/service-package), not for kidibar (product/product-package)
+        show_signature_block = not (is_product_sale or is_product_package_sale)
+        footer_html = SaleService._build_ticket_footer_html(show_signature_block, sale.payer_signature)
+
         # Format payment method
         payment_method_labels = {
             "cash": "Efectivo",
@@ -855,16 +886,7 @@ class SaleService:
             {f'<div class="info-row"><span class="info-label">Cambio:</span><span>{format_price(sale.cash_received_cents - sale.total_cents)}</span></div>' if sale.cash_received_cents and sale.cash_received_cents > sale.total_cents else ''}
         </div>
         
-        <div class="footer">
-            <p>¡Gracias por su compra!</p>
-            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #000; font-size: 9px; text-align: left;">
-                <p style="margin-bottom: 10px;">Al firmar este ticket acepta nuestra política de uso con términos y condiciones</p>
-                <div style="margin-top: 15px;">
-                    <p style="margin-bottom: 5px;">Firma del adulto responsable:</p>
-                    <div style="border-bottom: 1px solid #000; height: 30px; margin-top: 5px;"></div>
-                </div>
-            </div>
-        </div>
+        {footer_html}
     </div>
 </body>
 </html>"""
@@ -1233,7 +1255,10 @@ class SaleService:
         # Use "Nombre del cliente" for products and product packages
         # Use "Nombre del adulto responsable" for services and service packages
         payer_name_label = "Nombre del cliente" if (is_product_sale or is_product_package_sale) else "Nombre del adulto responsable"
-        
+        # Extension tickets are always service → show signature block; use sale payer_signature (or override if passed)
+        show_signature_block = not (is_product_sale or is_product_package_sale)
+        footer_html = SaleService._build_ticket_footer_html(show_signature_block, sale.payer_signature)
+
         # Format payment method
         payment_method_labels = {
             "cash": "Efectivo",
@@ -1620,16 +1645,7 @@ class SaleService:
             {f'<div class="info-row"><span class="info-label">Cambio:</span><span>{format_price(sale.cash_received_cents - sale.total_cents)}</span></div>' if sale.cash_received_cents and sale.cash_received_cents > sale.total_cents else ''}
         </div>
         
-        <div class="footer">
-            <p>¡Gracias por su compra!</p>
-            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #000; font-size: 9px; text-align: left;">
-                <p style="margin-bottom: 10px;">Al firmar este ticket acepta nuestra política de uso con términos y condiciones</p>
-                <div style="margin-top: 15px;">
-                    <p style="margin-bottom: 5px;">Firma del adulto responsable:</p>
-                    <div style="border-bottom: 1px solid #000; height: 30px; margin-top: 5px;"></div>
-                </div>
-            </div>
-        </div>
+        {footer_html}
     </div>
 </body>
 </html>"""

@@ -893,7 +893,53 @@ class TestPrintTicketEndpoints:
         assert "KIDYLAND" in html
         assert "Ticket de Venta" in html
         assert test_service.name in html  # Service name should be in ticket
-    
+        # Reception (service) ticket must show signature block
+        assert "Firma del adulto responsable" in html
+        assert "¡Gracias por su compra!" in html
+
+    async def test_print_ticket_product_no_signature_block(
+        self,
+        test_db,
+        test_user: User,
+        test_sucursal: Sucursal,
+        test_product: Product,
+    ):
+        """Product (kidibar) ticket must NOT show signature block; only thanks message."""
+        from tests.utils import factories
+        from models.sale_item import SaleItem
+
+        sale = await factories.create_test_sale(
+            db=test_db,
+            sucursal_id=test_sucursal.id,
+            user_id=test_user.id,
+            tipo="product",
+            total_cents=500,
+        )
+        sale_item = SaleItem(
+            sale_id=sale.id,
+            type="product",
+            ref_id=test_product.id,
+            quantity=1,
+            unit_price_cents=500,
+            subtotal_cents=500,
+        )
+        test_db.add(sale_item)
+        await test_db.flush()
+        await test_db.commit()
+        await test_db.rollback()
+
+        token = get_auth_token(test_user)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.post(
+                f"/sales/{sale.id}/print",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        assert response.status_code == 200
+        html = response.text
+        assert "KIDYLAND" in html
+        assert "¡Gracias por su compra!" in html
+        assert "Firma del adulto responsable" not in html
+
     async def test_print_ticket_not_found(
         self,
         test_db,
